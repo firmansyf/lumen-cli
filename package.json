@@ -42,5 +42,9 @@
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firmansyf/lumen-cli.git"
   }
 }
