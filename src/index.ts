@@ -1,24 +1,36 @@
+
 import { Command } from "commander";
+
+import {
+  initCommand
+} from "./commands/init.command.js";
 
 import {
   scanCommand
 } from "./commands/scan.command.js";
 
-const program =
-  new Command();
+const program = new Command();
 
 program
   .name("lumen")
-  .description(
-    "Illuminate your code."
+  .description("Illuminate your code.")
+  .version("0.1.4");
+
+program
+  .command("init")
+  .description("Create a Lumen configuration file")
+  .argument(
+    "[path]",
+    "Project path",
+    "."
   )
-  .version("0.1.0");
+  .action((projectPath: string) => {
+    initCommand(projectPath);
+  });
 
 program
   .command("scan")
-  .description(
-    "Analyze your project"
-  )
+  .description("Analyze your project")
   .argument(
     "[path]",
     "Project path",
@@ -28,16 +40,17 @@ program
     "--json",
     "Output scan results as JSON"
   )
-  .action(
-    async (
-      path,
-      options
-    ) => {
-      await scanCommand(
-        path,
-        options
-      );
-    }
+  .action(async (projectPath, options) => {
+    await scanCommand(projectPath, options);
+  });
+
+program.parseAsync().catch((error: unknown) => {
+  console.error(
+    "Lumen CLI failed:",
+    error instanceof Error
+      ? error.message
+      : error
   );
 
-program.parse();
+  process.exitCode = 1;
+});

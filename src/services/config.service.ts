@@ -1,3 +1,4 @@
+
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,7 +12,8 @@ const CONFIG_FILES = [
   "lumen.config.ts",
   "lumen.config.mts",
   "lumen.config.js",
-  "lumen.config.mjs"
+  "lumen.config.mjs",
+  "lumen.config.json"
 ];
 
 const DEFAULT_CONFIG: Required<LumenConfig> = {
@@ -35,36 +37,35 @@ const DEFAULT_CONFIG: Required<LumenConfig> = {
 export async function loadLumenConfig(
   projectPath: string
 ): Promise<LumenConfig> {
-  const configPath =
-    findConfigFile(projectPath);
+  const configPath = findConfigFile(projectPath);
 
   if (!configPath) {
     return createDefaultConfig();
   }
 
   try {
-    const module =
-      await import(
-        pathToFileURL(
-          configPath
-        ).href
+    let userConfig: unknown;
+
+    if (configPath.endsWith(".json")) {
+      userConfig = JSON.parse(
+        fs.readFileSync(configPath, "utf8")
+      );
+    } else {
+      const module = await import(
+        pathToFileURL(configPath).href
       );
 
-    const userConfig =
-      module.default ?? module;
+      userConfig = module.default ?? module;
+    }
 
-    return normalizeConfig(
-      userConfig
-    );
+    return normalizeConfig(userConfig);
   } catch (error) {
     console.warn(
       `Warning: Unable to load ${path.basename(configPath)}.`
     );
 
     if (error instanceof Error) {
-      console.warn(
-        `  ${error.message}`
-      );
+      console.warn(`  ${error.message}`);
     }
 
     return createDefaultConfig();
@@ -74,18 +75,13 @@ export async function loadLumenConfig(
 function findConfigFile(
   projectPath: string
 ): string | null {
-  for (
-    const fileName of CONFIG_FILES
-  ) {
-    const configPath =
-      path.join(
-        projectPath,
-        fileName
-      );
+  for (const fileName of CONFIG_FILES) {
+    const configPath = path.join(
+      projectPath,
+      fileName
+    );
 
-    if (
-      fs.existsSync(configPath)
-    ) {
+    if (fs.existsSync(configPath)) {
       return configPath;
     }
   }
@@ -95,12 +91,9 @@ function findConfigFile(
 
 function createDefaultConfig(): LumenConfig {
   return {
-    ignore: [
-      ...DEFAULT_CONFIG.ignore
-    ],
+    ignore: [...DEFAULT_CONFIG.ignore],
 
-    failOn:
-      DEFAULT_CONFIG.failOn,
+    failOn: DEFAULT_CONFIG.failOn,
 
     dependency: {
       ...DEFAULT_CONFIG.dependency
@@ -121,61 +114,40 @@ function normalizeConfig(
 ): LumenConfig {
   if (
     !config ||
-    typeof config !== "object"
+    typeof config !== "object" ||
+    Array.isArray(config)
   ) {
     return createDefaultConfig();
   }
 
-  const raw =
-    config as Record<
-      string,
-      unknown
-    >;
+  const raw = config as Record<string, unknown>;
 
-  const ignore =
-    Array.isArray(
-      raw.ignore
-    )
-      ? raw.ignore.filter(
-          (
-            value
-          ): value is string =>
-            typeof value ===
-            "string"
-        )
-      : [
-          ...DEFAULT_CONFIG.ignore
-        ];
+  const ignore = Array.isArray(raw.ignore)
+    ? raw.ignore.filter(
+        (value): value is string =>
+          typeof value === "string"
+      )
+    : [...DEFAULT_CONFIG.ignore];
 
-  const failOn =
-    normalizeFailOn(
-      raw.failOn
-    );
+  const failOn = normalizeFailOn(raw.failOn);
 
-  const dependency =
-    normalizeDependencyConfig(
-      raw.dependency
-    );
+  const dependency = normalizeDependencyConfig(
+    raw.dependency
+  );
 
-  const security =
-    normalizeSecurityConfig(
-      raw.security
-    );
+  const security = normalizeSecurityConfig(
+    raw.security
+  );
 
-  const environment =
-    normalizeEnvironmentConfig(
-      raw.environment
-    );
+  const environment = normalizeEnvironmentConfig(
+    raw.environment
+  );
 
   return {
     ignore,
-
     failOn,
-
     dependency,
-
     security,
-
     environment
   };
 }
@@ -199,27 +171,21 @@ function normalizeDependencyConfig(
 ): LumenConfig["dependency"] {
   if (
     !value ||
-    typeof value !== "object"
+    typeof value !== "object" ||
+    Array.isArray(value)
   ) {
     return {
       ...DEFAULT_CONFIG.dependency
     };
   }
 
-  const raw =
-    value as Record<
-      string,
-      unknown
-    >;
+  const raw = value as Record<string, unknown>;
 
   return {
     checkUpdates:
-      typeof raw.checkUpdates ===
-      "boolean"
+      typeof raw.checkUpdates === "boolean"
         ? raw.checkUpdates
-        : DEFAULT_CONFIG
-            .dependency
-            .checkUpdates
+        : DEFAULT_CONFIG.dependency.checkUpdates
   };
 }
 
@@ -228,27 +194,21 @@ function normalizeSecurityConfig(
 ): LumenConfig["security"] {
   if (
     !value ||
-    typeof value !== "object"
+    typeof value !== "object" ||
+    Array.isArray(value)
   ) {
     return {
       ...DEFAULT_CONFIG.security
     };
   }
 
-  const raw =
-    value as Record<
-      string,
-      unknown
-    >;
+  const raw = value as Record<string, unknown>;
 
   return {
     enabled:
-      typeof raw.enabled ===
-      "boolean"
+      typeof raw.enabled === "boolean"
         ? raw.enabled
-        : DEFAULT_CONFIG
-            .security
-            .enabled
+        : DEFAULT_CONFIG.security.enabled
   };
 }
 
@@ -257,26 +217,20 @@ function normalizeEnvironmentConfig(
 ): LumenConfig["environment"] {
   if (
     !value ||
-    typeof value !== "object"
+    typeof value !== "object" ||
+    Array.isArray(value)
   ) {
     return {
       ...DEFAULT_CONFIG.environment
     };
   }
 
-  const raw =
-    value as Record<
-      string,
-      unknown
-    >;
+  const raw = value as Record<string, unknown>;
 
   return {
     enabled:
-      typeof raw.enabled ===
-      "boolean"
+      typeof raw.enabled === "boolean"
         ? raw.enabled
-        : DEFAULT_CONFIG
-            .environment
-            .enabled
+        : DEFAULT_CONFIG.environment.enabled
   };
 }

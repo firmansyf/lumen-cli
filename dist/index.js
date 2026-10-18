@@ -1500,7 +1500,8 @@ var CONFIG_FILES = [
   "lumen.config.ts",
   "lumen.config.mts",
   "lumen.config.js",
-  "lumen.config.mjs"
+  "lumen.config.mjs",
+  "lumen.config.json"
 ];
 var DEFAULT_CONFIG = {
   ignore: [],
@@ -1521,21 +1522,22 @@ async function loadLumenConfig(projectPath) {
     return createDefaultConfig();
   }
   try {
-    const module = await import(pathToFileURL(
-      configPath
-    ).href);
-    const userConfig = module.default ?? module;
-    return normalizeConfig(
-      userConfig
-    );
+    let userConfig;
+    if (configPath.endsWith(".json")) {
+      userConfig = JSON.parse(
+        fs9.readFileSync(configPath, "utf8")
+      );
+    } else {
+      const module = await import(pathToFileURL(configPath).href);
+      userConfig = module.default ?? module;
+    }
+    return normalizeConfig(userConfig);
   } catch (error) {
     console.warn(
       `Warning: Unable to load ${path8.basename(configPath)}.`
     );
     if (error instanceof Error) {
-      console.warn(
-        `  ${error.message}`
-      );
+      console.warn(`  ${error.message}`);
     }
     return createDefaultConfig();
   }
@@ -1554,9 +1556,7 @@ function findConfigFile(projectPath) {
 }
 function createDefaultConfig() {
   return {
-    ignore: [
-      ...DEFAULT_CONFIG.ignore
-    ],
+    ignore: [...DEFAULT_CONFIG.ignore],
     failOn: DEFAULT_CONFIG.failOn,
     dependency: {
       ...DEFAULT_CONFIG.dependency
@@ -1570,20 +1570,14 @@ function createDefaultConfig() {
   };
 }
 function normalizeConfig(config) {
-  if (!config || typeof config !== "object") {
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
     return createDefaultConfig();
   }
   const raw = config;
-  const ignore = Array.isArray(
-    raw.ignore
-  ) ? raw.ignore.filter(
+  const ignore = Array.isArray(raw.ignore) ? raw.ignore.filter(
     (value) => typeof value === "string"
-  ) : [
-    ...DEFAULT_CONFIG.ignore
-  ];
-  const failOn = normalizeFailOn(
-    raw.failOn
-  );
+  ) : [...DEFAULT_CONFIG.ignore];
+  const failOn = normalizeFailOn(raw.failOn);
   const dependency = normalizeDependencyConfig(
     raw.dependency
   );
@@ -1608,7 +1602,7 @@ function normalizeFailOn(value) {
   return DEFAULT_CONFIG.failOn;
 }
 function normalizeDependencyConfig(value) {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
       ...DEFAULT_CONFIG.dependency
     };
@@ -1619,7 +1613,7 @@ function normalizeDependencyConfig(value) {
   };
 }
 function normalizeSecurityConfig(value) {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
       ...DEFAULT_CONFIG.security
     };
@@ -1630,7 +1624,7 @@ function normalizeSecurityConfig(value) {
   };
 }
 function normalizeEnvironmentConfig(value) {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
       ...DEFAULT_CONFIG.environment
     };

@@ -1,3 +1,4 @@
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +7,8 @@ import {
   afterEach,
   describe,
   expect,
-  it
+  it,
+  vi
 } from "vitest";
 
 import {
@@ -16,238 +18,168 @@ import {
 const temporaryDirectories: string[] = [];
 
 function createTempProject(): string {
-  const directory =
-    fs.mkdtempSync(
-      path.join(
-        os.tmpdir(),
-        "lumen-config-"
-      )
-    );
-
-  temporaryDirectories.push(
-    directory
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "lumen-config-")
   );
+
+  temporaryDirectories.push(directory);
 
   return directory;
 }
 
 afterEach(() => {
-  for (
-    const directory of
-    temporaryDirectories
-  ) {
-    fs.rmSync(
-      directory,
-      {
-        recursive: true,
-        force: true
-      }
-    );
+  for (const directory of temporaryDirectories) {
+    fs.rmSync(directory, {
+      recursive: true,
+      force: true
+    });
   }
 
   temporaryDirectories.length = 0;
+  vi.restoreAllMocks();
 });
 
-describe(
-  "config.service",
-  () => {
-    it(
-      "should return default config",
-      async () => {
-        const project =
-          createTempProject();
+describe("config.service", () => {
+  it("should return default config", async () => {
+    const project = createTempProject();
 
-        const config =
-          await loadLumenConfig(
-            project
-          );
+    const config = await loadLumenConfig(project);
 
-        expect(
-          config.ignore
-        ).toEqual([]);
+    expect(config.ignore).toEqual([]);
+    expect(config.failOn).toBe("error");
+    expect(config.dependency?.checkUpdates).toBe(true);
+    expect(config.security?.enabled).toBe(true);
+    expect(config.environment?.enabled).toBe(true);
+  });
 
-        expect(
-          config.failOn
-        ).toBe("error");
+  it("should load lumen.config.mjs", async () => {
+    const project = createTempProject();
 
-        expect(
-          config.dependency
-            ?.checkUpdates
-        ).toBe(true);
-
-        expect(
-          config.security
-            ?.enabled
-        ).toBe(true);
-
-        expect(
-          config.environment
-            ?.enabled
-        ).toBe(true);
-      }
+    fs.writeFileSync(
+      path.join(project, "lumen.config.mjs"),
+      `
+        export default {
+          ignore: ["fixtures/", "generated/"],
+          failOn: "warning",
+          dependency: { checkUpdates: false },
+          security: { enabled: false },
+          environment: { enabled: false }
+        };
+      `
     );
 
-    it(
-      "should load lumen.config.mjs",
-      async () => {
-        const project =
-          createTempProject();
+    const config = await loadLumenConfig(project);
 
-        fs.writeFileSync(
-          path.join(
-            project,
-            "lumen.config.mjs"
-          ),
-          `
-          export default {
-            ignore: [
-              "fixtures/",
-              "generated/"
-            ],
+    expect(config.ignore).toEqual([
+      "fixtures/",
+      "generated/"
+    ]);
 
-            failOn: "warning",
+    expect(config.failOn).toBe("warning");
+    expect(config.dependency?.checkUpdates).toBe(false);
+    expect(config.security?.enabled).toBe(false);
+    expect(config.environment?.enabled).toBe(false);
+  });
 
-            dependency: {
-              checkUpdates: false
-            },
+  it("should load lumen.config.json", async () => {
+    const project = createTempProject();
 
-            security: {
-              enabled: false
-            },
-
-            environment: {
-              enabled: false
-            }
-          };
-          `
-        );
-
-        const config =
-          await loadLumenConfig(
-            project
-          );
-
-        expect(
-          config.ignore
-        ).toEqual([
-          "fixtures/",
-          "generated/"
-        ]);
-
-        expect(
-          config.failOn
-        ).toBe("warning");
-
-        expect(
-          config.dependency
-            ?.checkUpdates
-        ).toBe(false);
-
-        expect(
-          config.security
-            ?.enabled
-        ).toBe(false);
-
-        expect(
-          config.environment
-            ?.enabled
-        ).toBe(false);
-      }
+    fs.writeFileSync(
+      path.join(project, "lumen.config.json"),
+      JSON.stringify({
+        ignore: ["fixtures/**"],
+        failOn: "warning",
+        dependency: {
+          checkUpdates: false
+        },
+        security: {
+          enabled: true
+        },
+        environment: {
+          enabled: false
+        }
+      })
     );
 
-    it(
-      "should normalize invalid ignore values",
-      async () => {
-        const project =
-          createTempProject();
+    const config = await loadLumenConfig(project);
 
-        fs.writeFileSync(
-          path.join(
-            project,
-            "lumen.config.mjs"
-          ),
-          `
-          export default {
-            ignore: [
-              "src/tests/",
-              123,
-              null,
-              "fixtures/"
-            ]
-          };
-          `
-        );
+    expect(config.ignore).toEqual(["fixtures/**"]);
+    expect(config.failOn).toBe("warning");
+    expect(config.dependency?.checkUpdates).toBe(false);
+    expect(config.security?.enabled).toBe(true);
+    expect(config.environment?.enabled).toBe(false);
+  });
 
-        const config =
-          await loadLumenConfig(
-            project
-          );
+  it("should normalize invalid ignore values", async () => {
+    const project = createTempProject();
 
-        expect(
-          config.ignore
-        ).toEqual([
-          "src/tests/",
-          "fixtures/"
-        ]);
-      }
+    fs.writeFileSync(
+      path.join(project, "lumen.config.mjs"),
+      `
+        export default {
+          ignore: ["src/tests/", 123, null, "fixtures/"]
+        };
+      `
     );
 
-    it(
-      "should normalize invalid failOn",
-      async () => {
-        const project =
-          createTempProject();
+    const config = await loadLumenConfig(project);
 
-        fs.writeFileSync(
-          path.join(
-            project,
-            "lumen.config.mjs"
-          ),
-          `
-          export default {
-            failOn: "invalid"
-          };
-          `
-        );
+    expect(config.ignore).toEqual([
+      "src/tests/",
+      "fixtures/"
+    ]);
+  });
 
-        const config =
-          await loadLumenConfig(
-            project
-          );
+  it("should normalize invalid failOn", async () => {
+    const project = createTempProject();
 
-        expect(
-          config.failOn
-        ).toBe("error");
-      }
+    fs.writeFileSync(
+      path.join(project, "lumen.config.mjs"),
+      `
+        export default {
+          failOn: "invalid"
+        };
+      `
     );
 
-    it(
-      "should support failOn none",
-      async () => {
-        const project =
-          createTempProject();
+    const config = await loadLumenConfig(project);
 
-        fs.writeFileSync(
-          path.join(
-            project,
-            "lumen.config.mjs"
-          ),
-          `
-          export default {
-            failOn: "none"
-          };
-          `
-        );
+    expect(config.failOn).toBe("error");
+  });
 
-        const config =
-          await loadLumenConfig(
-            project
-          );
+  it("should support failOn none", async () => {
+    const project = createTempProject();
 
-        expect(
-          config.failOn
-        ).toBe("none");
-      }
+    fs.writeFileSync(
+      path.join(project, "lumen.config.mjs"),
+      `
+        export default {
+          failOn: "none"
+        };
+      `
     );
-  }
-);
+
+    const config = await loadLumenConfig(project);
+
+    expect(config.failOn).toBe("none");
+  });
+
+  it("should use defaults for malformed JSON", async () => {
+    const project = createTempProject();
+
+    fs.writeFileSync(
+      path.join(project, "lumen.config.json"),
+      "{ invalid json"
+    );
+
+    const warning = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => {});
+
+    const config = await loadLumenConfig(project);
+
+    expect(config.failOn).toBe("error");
+    expect(config.security?.enabled).toBe(true);
+    expect(warning).toHaveBeenCalled();
+  });
+});
