@@ -3,19 +3,106 @@
 // src/index.ts
 import { Command } from "commander";
 
-// src/commands/scan.command.ts
-import path9 from "path";
-import pc2 from "picocolors";
-
-// src/analyzers/project.analyzer.ts
+// src/commands/init.command.ts
 import fs from "fs";
 import path from "path";
+import pc from "picocolors";
+var CONFIG_FILES = [
+  "lumen.config.ts",
+  "lumen.config.mts",
+  "lumen.config.js",
+  "lumen.config.mjs",
+  "lumen.config.json"
+];
+var CONFIG_TEMPLATE = {
+  ignore: [
+    "dist/**",
+    "coverage/**",
+    "node_modules/**"
+  ],
+  failOn: "error",
+  dependency: {
+    checkUpdates: true
+  },
+  security: {
+    enabled: true
+  },
+  environment: {
+    enabled: true
+  }
+};
+function initCommand(projectPath = ".") {
+  const absolutePath = path.resolve(projectPath);
+  if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
+    console.error(
+      pc.red(
+        `Project directory does not exist: ${absolutePath}`
+      )
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const existingConfig = CONFIG_FILES.find(
+    (fileName) => fs.existsSync(
+      path.join(absolutePath, fileName)
+    )
+  );
+  if (existingConfig) {
+    console.log(
+      pc.yellow(
+        `Configuration already exists: ${existingConfig}`
+      )
+    );
+    console.log("No files were changed.");
+    return;
+  }
+  const configPath = path.join(
+    absolutePath,
+    "lumen.config.json"
+  );
+  try {
+    fs.writeFileSync(
+      configPath,
+      `${JSON.stringify(CONFIG_TEMPLATE, null, 2)}
+`,
+      {
+        encoding: "utf8",
+        flag: "wx"
+      }
+    );
+    console.log(
+      pc.green("\u2713 Created lumen.config.json")
+    );
+    console.log(
+      pc.dim(
+        "You can now customize your Lumen scan settings."
+      )
+    );
+  } catch (error) {
+    console.error(
+      pc.red("Failed to create Lumen configuration.")
+    );
+    if (error instanceof Error) {
+      console.error(pc.dim(error.message));
+    }
+    process.exitCode = 1;
+  }
+}
+
+// src/commands/scan.command.ts
+import fs12 from "fs";
+import path11 from "path";
+import pc4 from "picocolors";
+
+// src/analyzers/project.analyzer.ts
+import fs2 from "fs";
+import path2 from "path";
 function analyzeProject(projectPath) {
   const issues = [];
-  const packageJsonPath = path.join(projectPath, "package.json");
-  const gitPath = path.join(projectPath, ".git");
-  const tsconfigPath = path.join(projectPath, "tsconfig.json");
-  if (fs.existsSync(packageJsonPath)) {
+  const packageJsonPath = path2.join(projectPath, "package.json");
+  const gitPath = path2.join(projectPath, ".git");
+  const tsconfigPath = path2.join(projectPath, "tsconfig.json");
+  if (fs2.existsSync(packageJsonPath)) {
     issues.push({
       severity: "info",
       category: "project",
@@ -29,10 +116,11 @@ function analyzeProject(projectPath) {
       category: "project",
       title: "package.json not found",
       message: "Lumen could not find a package.json file.",
+      file: "package.json",
       suggestion: "Run `npm init` or `pnpm init`."
     });
   }
-  if (fs.existsSync(gitPath)) {
+  if (fs2.existsSync(gitPath)) {
     issues.push({
       severity: "info",
       category: "project",
@@ -48,7 +136,7 @@ function analyzeProject(projectPath) {
       suggestion: "Run `git init` to initialize Git."
     });
   }
-  if (fs.existsSync(tsconfigPath)) {
+  if (fs2.existsSync(tsconfigPath)) {
     issues.push({
       severity: "info",
       category: "project",
@@ -61,15 +149,19 @@ function analyzeProject(projectPath) {
 }
 
 // src/analyzers/dependency.analyzer.ts
-import fs3 from "fs";
-import path3 from "path";
+import fs4 from "fs";
+import path4 from "path";
 import semver2 from "semver";
 
 // src/services/npm-registry.service.ts
+var NPM_REGISTRY_TIMEOUT_MS = 5e3;
 async function getLatestVersion(packageName) {
   try {
     const response = await fetch(
-      `https://registry.npmjs.org/${encodeURIComponent(packageName)}`
+      `https://registry.npmjs.org/${encodeURIComponent(packageName)}`,
+      {
+        signal: AbortSignal.timeout(NPM_REGISTRY_TIMEOUT_MS)
+      }
     );
     if (!response.ok) {
       return null;
@@ -82,21 +174,21 @@ async function getLatestVersion(packageName) {
 }
 
 // src/services/package.service.ts
-import fs2 from "fs";
-import path2 from "path";
+import fs3 from "fs";
+import path3 from "path";
 function getInstalledVersion(projectPath, packageName) {
-  const packageJsonPath = path2.join(
+  const packageJsonPath = path3.join(
     projectPath,
     "node_modules",
     packageName,
     "package.json"
   );
-  if (!fs2.existsSync(packageJsonPath)) {
+  if (!fs3.existsSync(packageJsonPath)) {
     return null;
   }
   try {
     const packageJson = JSON.parse(
-      fs2.readFileSync(packageJsonPath, "utf-8")
+      fs3.readFileSync(packageJsonPath, "utf-8")
     );
     return packageJson.version ?? null;
   } catch {
@@ -139,19 +231,32 @@ function isVersionInRange(version, range) {
 }
 
 // src/analyzers/dependency.analyzer.ts
+function isNonSemverRange(range) {
+  return range.startsWith("workspace:") || range.startsWith("file:") || range.startsWith("link:") || range.startsWith("git") || range.startsWith("http:") || range.startsWith("https:") || range.startsWith("npm:");
+}
+var DEPENDENCY_CONCURRENCY = 8;
+async function mapConcurrent(items, limit, fn) {
+  const results = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const chunkResults = await Promise.all(chunk.map(fn));
+    results.push(...chunkResults);
+  }
+  return results;
+}
 async function analyzeDependencies(projectPath) {
   const issues = [];
-  const packageJsonPath = path3.join(
+  const packageJsonPath = path4.join(
     projectPath,
     "package.json"
   );
-  if (!fs3.existsSync(packageJsonPath)) {
+  if (!fs4.existsSync(packageJsonPath)) {
     return issues;
   }
   let packageJson;
   try {
     packageJson = JSON.parse(
-      fs3.readFileSync(
+      fs4.readFileSync(
         packageJsonPath,
         "utf-8"
       )
@@ -189,118 +294,104 @@ async function analyzeDependencies(projectPath) {
     message: `${dependencyEntries.length} dependencies found.`,
     file: "package.json"
   });
-  const results = await Promise.all(
-    dependencyEntries.map(
-      async ([packageName, declaredVersion]) => {
-        const installedVersion = getInstalledVersion(
-          projectPath,
-          packageName
-        );
-        if (!installedVersion) {
-          return {
-            severity: "warning",
-            category: "dependency",
-            title: `${packageName} is not installed`,
-            message: `Declared: ${declaredVersion}`,
-            file: "package.json",
-            suggestion: "Run your package manager install command.",
-            metadata: {
-              declaredVersion
-            }
-          };
-        }
-        const latestVersion = await getLatestVersion(
-          packageName
-        );
-        if (!latestVersion) {
-          return {
-            severity: "warning",
-            category: "dependency",
-            title: `Unable to check ${packageName}`,
-            message: `Declared: ${declaredVersion} \xB7 Installed: ${installedVersion}`,
-            file: "package.json",
-            suggestion: "Check your internet connection or npm registry availability.",
-            metadata: {
-              declaredVersion,
-              installedVersion
-            }
-          };
-        }
-        const parsedInstalledVersion = semver2.valid(
-          installedVersion
-        );
-        const parsedLatestVersion = semver2.valid(
-          latestVersion
-        );
-        if (!parsedInstalledVersion || !parsedLatestVersion) {
-          return {
-            severity: "warning",
-            category: "dependency",
-            title: `Unable to compare ${packageName}`,
-            message: `Declared: ${declaredVersion} \xB7 Installed: ${installedVersion} \xB7 Latest: ${latestVersion}`,
-            file: "package.json",
-            suggestion: "Check the dependency version format.",
-            metadata: {
-              declaredVersion,
-              installedVersion,
-              latestVersion
-            }
-          };
-        }
-        const installedMatchesDeclared = isVersionInRange(
-          parsedInstalledVersion,
-          declaredVersion
-        );
-        if (!installedMatchesDeclared) {
-          return {
-            severity: "warning",
-            category: "dependency",
-            title: `${packageName} does not match declared version range`,
-            message: `Declared: ${declaredVersion} \xB7 Installed: ${parsedInstalledVersion}`,
-            file: "package.json",
-            suggestion: `Run your package manager install command to restore ${packageName} to the declared range.`,
-            metadata: {
-              declaredVersion,
-              installedVersion: parsedInstalledVersion
-            }
-          };
-        }
-        const isLatestInDeclaredRange = isVersionInRange(
-          parsedLatestVersion,
-          declaredVersion
-        );
-        const isOutdated = semver2.lt(
+  const results = await mapConcurrent(
+    dependencyEntries,
+    DEPENDENCY_CONCURRENCY,
+    async ([packageName, declaredVersion]) => {
+      const installedVersion = getInstalledVersion(
+        projectPath,
+        packageName
+      );
+      if (!installedVersion) {
+        return {
+          severity: "warning",
+          category: "dependency",
+          title: `${packageName} is not installed`,
+          message: `Declared: ${declaredVersion}`,
+          file: "package.json",
+          suggestion: "Run your package manager install command.",
+          metadata: {
+            declaredVersion
+          }
+        };
+      }
+      const latestVersion = await getLatestVersion(
+        packageName
+      );
+      if (!latestVersion) {
+        return {
+          severity: "warning",
+          category: "dependency",
+          title: `Unable to check ${packageName}`,
+          message: `Declared: ${declaredVersion} \xB7 Installed: ${installedVersion}`,
+          file: "package.json",
+          suggestion: "Check your internet connection or npm registry availability.",
+          metadata: {
+            declaredVersion,
+            installedVersion
+          }
+        };
+      }
+      const parsedInstalledVersion = semver2.valid(
+        installedVersion
+      );
+      const parsedLatestVersion = semver2.valid(
+        latestVersion
+      );
+      if (!parsedInstalledVersion || !parsedLatestVersion) {
+        return {
+          severity: "warning",
+          category: "dependency",
+          title: `Unable to compare ${packageName}`,
+          message: `Declared: ${declaredVersion} \xB7 Installed: ${installedVersion} \xB7 Latest: ${latestVersion}`,
+          file: "package.json",
+          suggestion: "Check the dependency version format.",
+          metadata: {
+            declaredVersion,
+            installedVersion,
+            latestVersion
+          }
+        };
+      }
+      const installedMatchesDeclared = isNonSemverRange(declaredVersion) || isVersionInRange(
+        parsedInstalledVersion,
+        declaredVersion
+      );
+      if (!installedMatchesDeclared) {
+        return {
+          severity: "warning",
+          category: "dependency",
+          title: `${packageName} does not match declared version range`,
+          message: `Declared: ${declaredVersion} \xB7 Installed: ${parsedInstalledVersion}`,
+          file: "package.json",
+          suggestion: `Run your package manager install command to restore ${packageName} to the declared range.`,
+          metadata: {
+            declaredVersion,
+            installedVersion: parsedInstalledVersion
+          }
+        };
+      }
+      const isLatestInDeclaredRange = isNonSemverRange(declaredVersion) || isVersionInRange(
+        parsedLatestVersion,
+        declaredVersion
+      );
+      const isOutdated = semver2.lt(
+        parsedInstalledVersion,
+        parsedLatestVersion
+      );
+      if (isOutdated) {
+        const updateType = getDependencyUpdateType(
           parsedInstalledVersion,
           parsedLatestVersion
         );
-        if (isOutdated) {
-          const updateType = getDependencyUpdateType(
-            parsedInstalledVersion,
-            parsedLatestVersion
-          );
-          if (!isLatestInDeclaredRange) {
-            return {
-              severity: updateType === "major" ? "warning" : "info",
-              category: "dependency",
-              title: `${packageName} has a ${updateType} update outside declared range`,
-              message: `Declared: ${declaredVersion} \xB7 Installed: ${parsedInstalledVersion} \xB7 Latest: ${parsedLatestVersion}`,
-              file: "package.json",
-              suggestion: `Review the ${updateType} upgrade before changing the declared version.`,
-              metadata: {
-                declaredVersion,
-                installedVersion: parsedInstalledVersion,
-                latestVersion: parsedLatestVersion,
-                updateType
-              }
-            };
-          }
+        if (!isLatestInDeclaredRange) {
           return {
-            severity: "warning",
+            severity: updateType === "major" ? "warning" : "info",
             category: "dependency",
-            title: `${packageName} has a ${updateType} update available`,
+            title: `${packageName} has a ${updateType} update outside declared range`,
             message: `Declared: ${declaredVersion} \xB7 Installed: ${parsedInstalledVersion} \xB7 Latest: ${parsedLatestVersion}`,
             file: "package.json",
-            suggestion: `Update ${packageName} to ${parsedLatestVersion}.`,
+            suggestion: `Review the ${updateType} upgrade before changing the declared version.`,
             metadata: {
               declaredVersion,
               installedVersion: parsedInstalledVersion,
@@ -310,29 +401,49 @@ async function analyzeDependencies(projectPath) {
           };
         }
         return {
-          severity: "info",
+          severity: "warning",
           category: "dependency",
-          title: `${packageName} is up to date`,
+          title: `${packageName} has a ${updateType} update available`,
           message: `Declared: ${declaredVersion} \xB7 Installed: ${parsedInstalledVersion} \xB7 Latest: ${parsedLatestVersion}`,
           file: "package.json",
+          suggestion: `Update ${packageName} to ${parsedLatestVersion}.`,
           metadata: {
             declaredVersion,
             installedVersion: parsedInstalledVersion,
-            latestVersion: parsedLatestVersion
+            latestVersion: parsedLatestVersion,
+            updateType
           }
         };
       }
-    )
+      return {
+        severity: "info",
+        category: "dependency",
+        title: `${packageName} is up to date`,
+        message: `Declared: ${declaredVersion} \xB7 Installed: ${parsedInstalledVersion} \xB7 Latest: ${parsedLatestVersion}`,
+        file: "package.json",
+        metadata: {
+          declaredVersion,
+          installedVersion: parsedInstalledVersion,
+          latestVersion: parsedLatestVersion
+        }
+      };
+    }
   );
   issues.push(...results);
   return issues;
 }
 
 // src/analyzers/security.analyzer.ts
-import fs4 from "fs";
-import path4 from "path";
+import fs5 from "fs";
+import path5 from "path";
 
 // src/services/osv.service.ts
+var OSV_TIMEOUT_MS = 5e3;
+var MAX_RETRIES = 1;
+var RETRY_DELAY_MS = 500;
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 async function queryOsv(packageName, version) {
   const query = {
     package: {
@@ -341,37 +452,56 @@ async function queryOsv(packageName, version) {
     },
     version
   };
-  try {
-    const response = await fetch(
-      "https://api.osv.dev/v1/query",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(query)
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(
+        "https://api.osv.dev/v1/query",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(query),
+          signal: AbortSignal.timeout(OSV_TIMEOUT_MS)
+        }
+      );
+      if ((response.status === 429 || response.status === 503) && attempt < MAX_RETRIES) {
+        await wait(RETRY_DELAY_MS);
+        continue;
       }
-    );
-    if (!response.ok) {
+      if (!response.ok) {
+        return [];
+      }
+      const data = await response.json();
+      if (!data || typeof data !== "object" || !Array.isArray(data.vulns)) {
+        return [];
+      }
+      return data.vulns;
+    } catch {
+      if (attempt < MAX_RETRIES) {
+        await wait(RETRY_DELAY_MS);
+        continue;
+      }
       return [];
     }
-    const data = await response.json();
-    return data.vulns ?? [];
-  } catch {
-    return [];
   }
+  return [];
 }
 
 // src/utils/security.utils.ts
 function getCvssScore(vulnerability) {
   const cvss = vulnerability.severity?.find(
-    (item) => item.type === "CVSS_V3"
+    (item) => item.type === "CVSS_V3" || item.type === "CVSS_V4"
   );
   if (!cvss?.score) {
     return void 0;
   }
+  const directScore = Number(cvss.score);
+  if (!Number.isNaN(directScore) && directScore >= 0 && directScore <= 10) {
+    return directScore;
+  }
   const match = cvss.score.match(
-    /CVSS:3\.\d\/.*?\/(\d+(?:\.\d+)?)$/
+    /CVSS:(?:3\.\d|4\.0)\/.*?\/(\d+(?:\.\d+)?)$/
   );
   if (!match) {
     return void 0;
@@ -396,39 +526,68 @@ function getFixedVersion(vulnerability) {
   }
   return void 0;
 }
-function getSecuritySeverity(score) {
-  if (score === void 0) {
-    return "warning";
+function getSecuritySeverity(score, databaseSeverity) {
+  if (score !== void 0) {
+    if (score >= 7) {
+      return "error";
+    }
+    if (score >= 4) {
+      return "warning";
+    }
+    return "info";
   }
-  if (score >= 7) {
-    return "error";
+  if (databaseSeverity) {
+    const normalized = databaseSeverity.toUpperCase();
+    if (normalized === "CRITICAL" || normalized === "HIGH") {
+      return "error";
+    }
+    if (normalized === "MODERATE" || normalized === "MEDIUM") {
+      return "warning";
+    }
+    if (normalized === "LOW") {
+      return "info";
+    }
   }
-  if (score >= 4) {
-    return "warning";
-  }
-  return "info";
+  return "warning";
 }
 
 // src/analyzers/security.analyzer.ts
+var OSV_CONCURRENCY = 5;
+async function mapConcurrent2(items, limit, fn) {
+  const results = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const chunkResults = await Promise.all(chunk.map(fn));
+    results.push(...chunkResults);
+  }
+  return results;
+}
 async function analyzeSecurity(projectPath) {
-  const packageJsonPath = path4.join(
+  const packageJsonPath = path5.join(
     projectPath,
     "package.json"
   );
-  if (!fs4.existsSync(packageJsonPath)) {
+  if (!fs5.existsSync(packageJsonPath)) {
     return [];
   }
-  const packageJson = JSON.parse(
-    fs4.readFileSync(packageJsonPath, "utf-8")
-  );
+  let packageJson;
+  try {
+    packageJson = JSON.parse(
+      fs5.readFileSync(packageJsonPath, "utf-8")
+    );
+  } catch {
+    return [];
+  }
   const dependencies = {
     ...packageJson.dependencies,
     ...packageJson.devDependencies
   };
   const entries = Object.entries(dependencies);
-  const results = await Promise.all(
-    entries.map(
-      async ([packageName]) => {
+  const results = await mapConcurrent2(
+    entries,
+    OSV_CONCURRENCY,
+    async ([packageName]) => {
+      try {
         const installedVersion = getInstalledVersion(
           projectPath,
           packageName
@@ -445,7 +604,10 @@ async function analyzeSecurity(projectPath) {
             const cvss = getCvssScore(vulnerability);
             const cve = getCve(vulnerability);
             const fixedVersion = getFixedVersion(vulnerability);
-            const severity = getSecuritySeverity(cvss);
+            const severity = getSecuritySeverity(
+              cvss,
+              vulnerability.database_specific?.severity
+            );
             const identifier = cve ?? vulnerability.id;
             return {
               severity,
@@ -464,8 +626,10 @@ async function analyzeSecurity(projectPath) {
             };
           }
         );
+      } catch {
+        return [];
       }
-    )
+    }
   );
   const issues = results.flat();
   if (issues.length === 0) {
@@ -482,8 +646,8 @@ async function analyzeSecurity(projectPath) {
 }
 
 // src/analyzers/secret.analyzer.ts
-import fs6 from "fs";
-import path6 from "path";
+import fs7 from "fs";
+import path7 from "path";
 
 // src/utils/secret.utils.ts
 var SECRET_PATTERNS = [
@@ -525,8 +689,8 @@ var SECRET_PATTERNS = [
 ];
 
 // src/utils/ignore.utils.ts
-import fs5 from "fs";
-import path5 from "path";
+import fs6 from "fs";
+import path6 from "path";
 var DEFAULT_IGNORED_DIRECTORIES = /* @__PURE__ */ new Set([
   "node_modules",
   ".git",
@@ -546,17 +710,17 @@ function normalizePath(value) {
   return value.replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/^\/+/, "");
 }
 function loadLumenIgnore(projectPath) {
-  const ignorePath = path5.join(
+  const ignorePath = path6.join(
     projectPath,
     ".lumenignore"
   );
-  if (!fs5.existsSync(
+  if (!fs6.existsSync(
     ignorePath
   )) {
     return [];
   }
   try {
-    return fs5.readFileSync(
+    return fs6.readFileSync(
       ignorePath,
       "utf-8"
     ).split(/\r?\n/).map(
@@ -648,7 +812,7 @@ function matchesPattern(relativePath, pattern) {
 }
 function shouldIgnorePath(projectPath, filePath, ignorePatterns = []) {
   const relativePath = normalizePath(
-    path5.relative(
+    path6.relative(
       projectPath,
       filePath
     )
@@ -668,7 +832,7 @@ function shouldIgnorePath(projectPath, filePath, ignorePatterns = []) {
   )) {
     return true;
   }
-  const fileName = path5.basename(
+  const fileName = path6.basename(
     relativePath
   );
   if (DEFAULT_IGNORED_FILES.has(
@@ -688,7 +852,7 @@ function shouldIgnorePath(projectPath, filePath, ignorePatterns = []) {
 function getFiles(projectPath, ignorePatterns) {
   const files = [];
   function walk(directory) {
-    if (shouldIgnorePath(
+    if (directory !== projectPath && shouldIgnorePath(
       projectPath,
       directory,
       ignorePatterns
@@ -697,17 +861,14 @@ function getFiles(projectPath, ignorePatterns) {
     }
     let entries;
     try {
-      entries = fs6.readdirSync(
-        directory,
-        {
-          withFileTypes: true
-        }
-      );
+      entries = fs7.readdirSync(directory, {
+        withFileTypes: true
+      });
     } catch {
       return;
     }
     for (const entry of entries) {
-      const fullPath = path6.join(
+      const fullPath = path7.join(
         directory,
         entry.name
       );
@@ -723,43 +884,89 @@ function getFiles(projectPath, ignorePatterns) {
         continue;
       }
       if (entry.isFile()) {
-        files.push(
-          fullPath
-        );
+        files.push(fullPath);
       }
     }
   }
   walk(projectPath);
   return files;
 }
+function getChangedFilePaths(projectPath, changedFiles, ignorePatterns) {
+  const files = /* @__PURE__ */ new Set();
+  for (const changedFile of changedFiles) {
+    const absolutePath = path7.resolve(
+      projectPath,
+      changedFile
+    );
+    const relativePath = path7.relative(
+      projectPath,
+      absolutePath
+    );
+    if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${path7.sep}`) || path7.isAbsolute(relativePath)) {
+      continue;
+    }
+    if (shouldIgnorePath(
+      projectPath,
+      absolutePath,
+      ignorePatterns
+    )) {
+      continue;
+    }
+    try {
+      if (!fs7.statSync(absolutePath).isFile()) {
+        continue;
+      }
+      const realProjectPath = fs7.realpathSync(projectPath);
+      const realFilePath = fs7.realpathSync(absolutePath);
+      const realRel = path7.relative(realProjectPath, realFilePath);
+      if (realRel === "" || realRel === ".." || realRel.startsWith(`..${path7.sep}`) || realRel.startsWith("../") || path7.isAbsolute(realRel)) {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+    files.add(absolutePath);
+  }
+  return [...files];
+}
 function getLineNumber(content, index) {
   return content.slice(0, index).split("\n").length;
 }
 function analyzeSecrets(projectPath, options = {}) {
-  const issues = [];
-  const fileIgnore = loadLumenIgnore(
-    projectPath
-  );
+  const fileIgnore = loadLumenIgnore(projectPath);
   const ignorePatterns = mergeIgnorePatterns(
     fileIgnore,
     options.ignore ?? []
   );
-  const files = getFiles(
+  const files = options.changedFiles !== void 0 ? getChangedFilePaths(
+    projectPath,
+    options.changedFiles,
+    ignorePatterns
+  ) : getFiles(
     projectPath,
     ignorePatterns
   );
+  if (options.changedFiles !== void 0 && files.length === 0) {
+    return [
+      {
+        severity: "info",
+        category: "security",
+        title: "No changed files to scan",
+        message: "No eligible changed files were found for secret scanning."
+      }
+    ];
+  }
+  const issues = [];
   for (const filePath of files) {
     let content;
     try {
-      const stats = fs6.statSync(
-        filePath
-      );
+      const stats = fs7.statSync(filePath);
       if (stats.size > 1024 * 1024) {
         continue;
       }
-      content = fs6.readFileSync(
+      content = fs7.readFileSync(
         filePath,
-        "utf-8"
+        "utf8"
       );
     } catch {
       continue;
@@ -767,18 +974,14 @@ function analyzeSecrets(projectPath, options = {}) {
     for (const secret of SECRET_PATTERNS) {
       const regex = new RegExp(
         secret.pattern.source,
-        secret.pattern.flags.includes(
-          "g"
-        ) ? secret.pattern.flags : `${secret.pattern.flags}g`
+        secret.pattern.flags.includes("g") ? secret.pattern.flags : `${secret.pattern.flags}g`
       );
       let match;
-      while ((match = regex.exec(
-        content
-      )) !== null) {
-        const relativePath = path6.relative(
+      while ((match = regex.exec(content)) !== null) {
+        const relativePath = path7.relative(
           projectPath,
           filePath
-        );
+        ).split(path7.sep).join("/");
         const line = getLineNumber(
           content,
           match.index
@@ -815,11 +1018,11 @@ function analyzeSecrets(projectPath, options = {}) {
 }
 
 // src/analyzers/environment.analyzer.ts
-import fs8 from "fs";
-import path7 from "path";
+import fs9 from "fs";
+import path8 from "path";
 
 // src/utils/environment.utils.ts
-import fs7 from "fs";
+import fs8 from "fs";
 function parseEnvironmentVariables(content) {
   const variables = /* @__PURE__ */ new Set();
   const lines = content.split("\n");
@@ -839,11 +1042,11 @@ function parseEnvironmentVariables(content) {
   return variables;
 }
 function readEnvironmentFile(filePath) {
-  if (!fs7.existsSync(filePath)) {
+  if (!fs8.existsSync(filePath)) {
     return /* @__PURE__ */ new Set();
   }
   try {
-    const content = fs7.readFileSync(
+    const content = fs8.readFileSync(
       filePath,
       "utf-8"
     );
@@ -895,24 +1098,24 @@ var SOURCE_EXTENSIONS = /* @__PURE__ */ new Set([
   ".cts"
 ]);
 function shouldIgnore(filePath) {
-  const parts = filePath.split(path7.sep);
+  const parts = filePath.split(path8.sep);
   if (parts.some(
     (part) => IGNORED_DIRECTORIES.has(part)
   )) {
     return true;
   }
   return IGNORED_FILES.has(
-    path7.basename(filePath)
+    path8.basename(filePath)
   );
 }
-function getSourceFiles(directory) {
+function getSourceFiles(projectPath, directory, ignorePatterns = []) {
   const files = [];
-  if (shouldIgnore(directory)) {
+  if (shouldIgnore(directory) || directory !== projectPath && shouldIgnorePath(projectPath, directory, ignorePatterns)) {
     return files;
   }
   let entries;
   try {
-    entries = fs8.readdirSync(
+    entries = fs9.readdirSync(
       directory,
       {
         withFileTypes: true
@@ -922,17 +1125,19 @@ function getSourceFiles(directory) {
     return files;
   }
   for (const entry of entries) {
-    const fullPath = path7.join(
+    const fullPath = path8.join(
       directory,
       entry.name
     );
-    if (shouldIgnore(fullPath)) {
+    if (shouldIgnore(fullPath) || shouldIgnorePath(projectPath, fullPath, ignorePatterns)) {
       continue;
     }
     if (entry.isDirectory()) {
       files.push(
         ...getSourceFiles(
-          fullPath
+          projectPath,
+          fullPath,
+          ignorePatterns
         )
       );
       continue;
@@ -940,7 +1145,7 @@ function getSourceFiles(directory) {
     if (!entry.isFile()) {
       continue;
     }
-    const extension = path7.extname(entry.name);
+    const extension = path8.extname(entry.name);
     if (SOURCE_EXTENSIONS.has(
       extension
     )) {
@@ -952,19 +1157,21 @@ function getSourceFiles(directory) {
 function getLineNumber2(content, index) {
   return content.slice(0, index).split("\n").length;
 }
-function getReferencedVariables(projectPath) {
+function getReferencedVariables(projectPath, ignorePatterns = []) {
   const references = /* @__PURE__ */ new Map();
   const files = getSourceFiles(
-    projectPath
+    projectPath,
+    projectPath,
+    ignorePatterns
   );
   for (const filePath of files) {
     let content;
     try {
-      const stats = fs8.statSync(filePath);
+      const stats = fs9.statSync(filePath);
       if (stats.size > 1024 * 1024) {
         continue;
       }
-      content = fs8.readFileSync(
+      content = fs9.readFileSync(
         filePath,
         "utf-8"
       );
@@ -990,7 +1197,7 @@ function getReferencedVariables(projectPath) {
       if (!match) {
         continue;
       }
-      const relativePath = path7.relative(
+      const relativePath = path8.relative(
         projectPath,
         filePath
       );
@@ -1009,18 +1216,18 @@ function getReferencedVariables(projectPath) {
   return references;
 }
 function isGitignored(projectPath, target) {
-  const gitignorePath = path7.join(
+  const gitignorePath = path8.join(
     projectPath,
     ".gitignore"
   );
-  if (!fs8.existsSync(
+  if (!fs9.existsSync(
     gitignorePath
   )) {
     return false;
   }
   let content;
   try {
-    content = fs8.readFileSync(
+    content = fs9.readFileSync(
       gitignorePath,
       "utf-8"
     );
@@ -1060,18 +1267,23 @@ function isGitignored(projectPath, target) {
   }
   return false;
 }
-function analyzeEnvironment(projectPath) {
+function analyzeEnvironment(projectPath, options = {}) {
   const issues = [];
-  const envPath = path7.join(
+  const fileIgnore = loadLumenIgnore(projectPath);
+  const ignorePatterns = mergeIgnorePatterns(
+    fileIgnore,
+    options.ignore ?? []
+  );
+  const envPath = path8.join(
     projectPath,
     ".env"
   );
-  const envExamplePath = path7.join(
+  const envExamplePath = path8.join(
     projectPath,
     ".env.example"
   );
-  const hasEnv = fs8.existsSync(envPath);
-  const hasEnvExample = fs8.existsSync(
+  const hasEnv = fs9.existsSync(envPath);
+  const hasEnvExample = fs9.existsSync(
     envExamplePath
   );
   const envVariables = readEnvironmentFile(
@@ -1145,7 +1357,8 @@ function analyzeEnvironment(projectPath) {
     });
   }
   const references = getReferencedVariables(
-    projectPath
+    projectPath,
+    ignorePatterns
   );
   if (references.size > 0 && !hasEnv) {
     for (const [
@@ -1250,29 +1463,29 @@ function analyzeEnvironment(projectPath) {
 }
 
 // src/formatters/terminal.formatter.ts
-import pc from "picocolors";
+import pc2 from "picocolors";
 function getIcon(severity) {
   switch (severity) {
     case "info":
-      return pc.green("\u2713");
+      return pc2.green("\u2713");
     case "warning":
-      return pc.yellow("\u26A0");
+      return pc2.yellow("\u26A0");
     case "error":
-      return pc.red("\u2717");
+      return pc2.red("\u2717");
   }
 }
 function getUpdateLabel(updateType) {
   switch (updateType) {
     case "major":
-      return pc.red("Major update");
+      return pc2.red("Major update");
     case "minor":
-      return pc.yellow("Minor update");
+      return pc2.yellow("Minor update");
     case "patch":
-      return pc.blue("Patch update");
+      return pc2.blue("Patch update");
     case "prerelease":
-      return pc.magenta("Prerelease update");
+      return pc2.magenta("Prerelease update");
     default:
-      return pc.yellow("Update available");
+      return pc2.yellow("Update available");
   }
 }
 function printDependencyMetadata(issue) {
@@ -1285,24 +1498,24 @@ function printDependencyMetadata(issue) {
     latestVersion,
     updateType
   } = issue.metadata;
-  if (declaredVersion) {
+  if (updateType) {
+    console.log(
+      `  Type: ${getUpdateLabel(updateType)}`
+    );
+  }
+  if (!issue.message.includes("Declared:") && declaredVersion) {
     console.log(
       `  Declared: ${declaredVersion}`
     );
   }
-  if (installedVersion) {
+  if (!issue.message.includes("Installed:") && installedVersion) {
     console.log(
       `  Installed: ${installedVersion}`
     );
   }
-  if (latestVersion) {
+  if (!issue.message.includes("Latest:") && latestVersion) {
     console.log(
       `  Latest: ${latestVersion}`
-    );
-  }
-  if (updateType) {
-    console.log(
-      `  Type: ${getUpdateLabel(updateType)}`
     );
   }
 }
@@ -1314,11 +1527,6 @@ function printSecurityMetadata(issue) {
   if (metadata.secretType) {
     console.log(
       `  Type: ${metadata.secretType}`
-    );
-  }
-  if (metadata.line) {
-    console.log(
-      `  Line: ${metadata.line}`
     );
   }
   if (metadata.cve) {
@@ -1356,12 +1564,7 @@ function printEnvironmentMetadata(issue) {
       `  Variable: ${issue.metadata.envVariable}`
     );
   }
-  if (issue.metadata.line) {
-    console.log(
-      `  Line: ${issue.metadata.line}`
-    );
-  }
-  if (issue.metadata.environmentFile) {
+  if (issue.metadata.environmentFile && issue.metadata.environmentFile !== issue.file) {
     console.log(
       `  Environment file: ${issue.metadata.environmentFile}`
     );
@@ -1378,8 +1581,9 @@ function printIssue(issue) {
     `  ${issue.message}`
   );
   if (issue.file) {
+    const location = issue.metadata?.line ? `${issue.file}:${issue.metadata.line}` : issue.file;
     console.log(
-      `  File: ${issue.file}`
+      `  File: ${pc2.cyan(location)}`
     );
   }
   printDependencyMetadata(issue);
@@ -1387,7 +1591,7 @@ function printIssue(issue) {
   printEnvironmentMetadata(issue);
   if (issue.suggestion) {
     console.log(
-      `  Suggestion: ${issue.suggestion}`
+      `  ${pc2.cyan("\u2192")} ${pc2.dim("Suggestion:")} ${issue.suggestion}`
     );
   }
   console.log();
@@ -1403,15 +1607,82 @@ function printSummary(issues) {
     (issue) => issue.severity === "info"
   ).length;
   console.log(
-    pc.dim(
+    pc2.dim(
       "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
     )
   );
   console.log(
-    `${pc.red(`${errors} errors`)} \xB7 ${pc.yellow(`${warnings} warnings`)} \xB7 ${pc.green(`${infos} info`)}`
+    `${pc2.red(`${errors} errors`)} \xB7 ${pc2.yellow(`${warnings} warnings`)} \xB7 ${pc2.green(`${infos} info`)}`
   );
   console.log();
 }
+
+// package.json
+var package_default = {
+  name: "lumen-cli",
+  version: "0.1.4",
+  description: "Illuminate your code. A developer project health and diagnostics CLI.",
+  type: "module",
+  main: "dist/index.js",
+  types: "dist/index.d.ts",
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      default: "./dist/index.js"
+    }
+  },
+  bin: {
+    lumen: "dist/index.js",
+    "lumen-cli": "dist/index.js"
+  },
+  files: [
+    "dist",
+    "assets",
+    "CHANGELOG.md"
+  ],
+  engines: {
+    node: ">=20"
+  },
+  scripts: {
+    dev: "tsx src/index.ts",
+    build: "tsup",
+    start: "node dist/index.js",
+    test: "vitest run",
+    "test:watch": "vitest"
+  },
+  keywords: [
+    "cli",
+    "developer-tools",
+    "code-quality",
+    "security",
+    "dependency",
+    "diagnostics",
+    "developer-experience"
+  ],
+  author: "Yusuf Firmansyah",
+  license: "MIT",
+  dependencies: {
+    commander: "^14.0.0",
+    picocolors: "^1.1.1",
+    semver: "^7.7.0"
+  },
+  devDependencies: {
+    "@types/node": "^24.0.0",
+    "@types/semver": "^7.7.0",
+    tsup: "^8.0.0",
+    tsx: "^4.0.0",
+    typescript: "^5.0.0",
+    vitest: "^3.0.0"
+  },
+  repository: {
+    type: "git",
+    url: "git+https://github.com/firmansyf/lumen-cli.git"
+  },
+  bugs: {
+    url: "https://github.com/firmansyf/lumen-cli/issues"
+  },
+  homepage: "https://github.com/firmansyf/lumen-cli#readme"
+};
 
 // src/formatters/json.formatter.ts
 function formatJsonResult(issues, scannedPath) {
@@ -1426,8 +1697,10 @@ function formatJsonResult(issues, scannedPath) {
   ).length;
   const result = {
     tool: "lumen",
-    version: "0.1.0",
+    version: package_default.version,
     scannedPath,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    success: errors === 0,
     summary: {
       total: issues.length,
       errors,
@@ -1493,10 +1766,11 @@ function groupIssuesByCategory(issues) {
 }
 
 // src/services/config.service.ts
-import fs9 from "fs";
-import path8 from "path";
+import fs10 from "fs";
+import path9 from "path";
 import { pathToFileURL } from "url";
-var CONFIG_FILES = [
+import pc3 from "picocolors";
+var CONFIG_FILES2 = [
   "lumen.config.ts",
   "lumen.config.mts",
   "lumen.config.js",
@@ -1525,7 +1799,7 @@ async function loadLumenConfig(projectPath) {
     let userConfig;
     if (configPath.endsWith(".json")) {
       userConfig = JSON.parse(
-        fs9.readFileSync(configPath, "utf8")
+        fs10.readFileSync(configPath, "utf8")
       );
     } else {
       const module = await import(pathToFileURL(configPath).href);
@@ -1534,7 +1808,7 @@ async function loadLumenConfig(projectPath) {
     return normalizeConfig(userConfig);
   } catch (error) {
     console.warn(
-      `Warning: Unable to load ${path8.basename(configPath)}.`
+      `Warning: Unable to load ${path9.basename(configPath)}.`
     );
     if (error instanceof Error) {
       console.warn(`  ${error.message}`);
@@ -1543,12 +1817,12 @@ async function loadLumenConfig(projectPath) {
   }
 }
 function findConfigFile(projectPath) {
-  for (const fileName of CONFIG_FILES) {
-    const configPath = path8.join(
+  for (const fileName of CONFIG_FILES2) {
+    const configPath = path9.join(
       projectPath,
       fileName
     );
-    if (fs9.existsSync(configPath)) {
+    if (fs10.existsSync(configPath)) {
       return configPath;
     }
   }
@@ -1574,9 +1848,24 @@ function normalizeConfig(config) {
     return createDefaultConfig();
   }
   const raw = config;
-  const ignore = Array.isArray(raw.ignore) ? raw.ignore.filter(
-    (value) => typeof value === "string"
-  ) : [...DEFAULT_CONFIG.ignore];
+  let ignore;
+  if (Array.isArray(raw.ignore)) {
+    const hasNonString = raw.ignore.some(
+      (v) => typeof v !== "string"
+    );
+    if (hasNonString) {
+      console.warn(
+        pc3.yellow(
+          "Warning: 'ignore' contains non-string items that were filtered out."
+        )
+      );
+    }
+    ignore = raw.ignore.filter(
+      (value) => typeof value === "string"
+    );
+  } else {
+    ignore = [...DEFAULT_CONFIG.ignore];
+  }
   const failOn = normalizeFailOn(raw.failOn);
   const dependency = normalizeDependencyConfig(
     raw.dependency
@@ -1598,6 +1887,13 @@ function normalizeConfig(config) {
 function normalizeFailOn(value) {
   if (value === "error" || value === "warning" || value === "none") {
     return value;
+  }
+  if (value !== void 0) {
+    console.warn(
+      pc3.yellow(
+        `Warning: Invalid failOn '${String(value)}'. Expected 'error', 'warning', or 'none'. Defaulting to 'error'.`
+      )
+    );
   }
   return DEFAULT_CONFIG.failOn;
 }
@@ -1635,42 +1931,330 @@ function normalizeEnvironmentConfig(value) {
   };
 }
 
-// src/commands/scan.command.ts
-async function scanCommand(projectPath = ".", options = {}) {
-  const absolutePath = path9.resolve(
-    projectPath
-  );
-  const config = await loadLumenConfig(
-    absolutePath
-  );
-  const projectIssues = analyzeProject(
-    absolutePath
-  );
-  const dependencyIssues = config.dependency?.checkUpdates === false ? [] : await analyzeDependencies(
-    absolutePath
-  );
-  const securityIssues = config.security?.enabled === false ? [] : await analyzeSecurity(
-    absolutePath
-  );
-  const secretIssues = config.security?.enabled === false ? [] : analyzeSecrets(
-    absolutePath,
-    {
-      ignore: config.ignore
+// src/services/git.service.ts
+import { execFileSync } from "child_process";
+import fs11 from "fs";
+import path10 from "path";
+function getChangedFiles(projectPath, ignorePatterns = [], baseRef) {
+  let output;
+  let repoRoot;
+  try {
+    const revParseOutput = execFileSync(
+      "git",
+      ["rev-parse", "--is-inside-work-tree", "--show-toplevel"],
+      {
+        cwd: projectPath,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"]
+      }
+    ).trim();
+    const [insideWorkTree, toplevel] = revParseOutput.split(/\r?\n/);
+    if (insideWorkTree !== "true") {
+      throw new Error("Not a Git repository.");
     }
+    repoRoot = toplevel ? path10.resolve(toplevel) : path10.resolve(projectPath);
+    if (baseRef) {
+      const diffRevision = baseRef.includes("..") ? baseRef : `${baseRef}...HEAD`;
+      try {
+        output = execFileSync(
+          "git",
+          [
+            "diff",
+            "--name-only",
+            "-z",
+            "--diff-filter=d",
+            diffRevision
+          ],
+          {
+            cwd: projectPath,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "ignore"]
+          }
+        );
+      } catch {
+        throw new Error(
+          `Cannot compare against base '${baseRef}'. Make sure the base reference exists (e.g. run 'git fetch origin ${baseRef}').`
+        );
+      }
+    } else {
+      output = execFileSync(
+        "git",
+        [
+          "status",
+          "--porcelain=v1",
+          "-z",
+          "--untracked-files=all"
+        ],
+        {
+          cwd: projectPath,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"]
+        }
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Cannot compare against base")) {
+      throw error;
+    }
+    throw new Error(
+      "Cannot read Git changes. Make sure Git is installed and the target directory is inside a Git repository."
+    );
+  }
+  const entries = output.split("\0");
+  const changedFiles = /* @__PURE__ */ new Set();
+  if (baseRef) {
+    for (const relativePath of entries) {
+      if (!relativePath) {
+        continue;
+      }
+      const absolutePath = path10.resolve(
+        repoRoot,
+        relativePath
+      );
+      const resolvedRelativePath = path10.relative(
+        projectPath,
+        absolutePath
+      );
+      if (resolvedRelativePath === "" || resolvedRelativePath === ".." || resolvedRelativePath.startsWith(`..${path10.sep}`) || resolvedRelativePath.startsWith("../") || path10.isAbsolute(resolvedRelativePath)) {
+        continue;
+      }
+      if (shouldIgnorePath(
+        projectPath,
+        absolutePath,
+        ignorePatterns
+      )) {
+        continue;
+      }
+      try {
+        if (!fs11.statSync(absolutePath).isFile()) {
+          continue;
+        }
+        const realProjectPath = fs11.realpathSync(projectPath);
+        const realFilePath = fs11.realpathSync(absolutePath);
+        const realRel = path10.relative(realProjectPath, realFilePath);
+        if (realRel === "" || realRel === ".." || realRel.startsWith(`..${path10.sep}`) || realRel.startsWith("../") || path10.isAbsolute(realRel)) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      changedFiles.add(
+        resolvedRelativePath.split(path10.sep).join("/")
+      );
+    }
+    return [...changedFiles].sort();
+  }
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    if (!entry || entry.length < 4 || entry[2] !== " ") {
+      continue;
+    }
+    const status = entry.slice(0, 2);
+    const relativePath = entry.slice(3);
+    if (status.includes("R") || status.includes("C")) {
+      index++;
+    }
+    if (status.includes("D")) {
+      continue;
+    }
+    const absolutePath = path10.resolve(
+      repoRoot,
+      relativePath
+    );
+    const resolvedRelativePath = path10.relative(
+      projectPath,
+      absolutePath
+    );
+    if (resolvedRelativePath === "" || resolvedRelativePath === ".." || resolvedRelativePath.startsWith(`..${path10.sep}`) || resolvedRelativePath.startsWith("../") || path10.isAbsolute(resolvedRelativePath)) {
+      continue;
+    }
+    if (shouldIgnorePath(
+      projectPath,
+      absolutePath,
+      ignorePatterns
+    )) {
+      continue;
+    }
+    try {
+      if (!fs11.statSync(absolutePath).isFile()) {
+        continue;
+      }
+      const realProjectPath = fs11.realpathSync(projectPath);
+      const realFilePath = fs11.realpathSync(absolutePath);
+      const realRel = path10.relative(realProjectPath, realFilePath);
+      if (realRel === "" || realRel === ".." || realRel.startsWith(`..${path10.sep}`) || realRel.startsWith("../") || path10.isAbsolute(realRel)) {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+    changedFiles.add(
+      resolvedRelativePath.split(path10.sep).join("/")
+    );
+  }
+  return [...changedFiles].sort();
+}
+
+// src/commands/scan.command.ts
+async function runAnalyzerSafely(name, category, fn) {
+  try {
+    return await fn();
+  } catch (error) {
+    return [
+      {
+        severity: "error",
+        category,
+        title: `${name} failed`,
+        message: error instanceof Error ? error.message : `An unexpected error occurred in ${name}.`,
+        suggestion: `Check your project files or configuration for ${name}.`
+      }
+    ];
+  }
+}
+async function collectIssues(projectPath = ".") {
+  const absolutePath = path11.resolve(projectPath);
+  const config = await loadLumenConfig(absolutePath);
+  const projectIssues = await runAnalyzerSafely(
+    "Project analyzer",
+    "project",
+    () => analyzeProject(absolutePath)
   );
-  const environmentIssues = config.environment?.enabled === false ? [] : analyzeEnvironment(
-    absolutePath
+  const dependencyIssues = config.dependency?.checkUpdates === false ? [] : await runAnalyzerSafely(
+    "Dependency analyzer",
+    "dependency",
+    () => analyzeDependencies(absolutePath)
   );
-  const rawIssues = [
+  const securityIssues = config.security?.enabled === false ? [] : await runAnalyzerSafely(
+    "Security analyzer",
+    "security",
+    () => analyzeSecurity(absolutePath)
+  );
+  const secretIssues = config.security?.enabled === false ? [] : await runAnalyzerSafely(
+    "Secret analyzer",
+    "security",
+    () => analyzeSecrets(
+      absolutePath,
+      {
+        ignore: config.ignore
+      }
+    )
+  );
+  const environmentIssues = config.environment?.enabled === false ? [] : await runAnalyzerSafely(
+    "Environment analyzer",
+    "environment",
+    () => analyzeEnvironment(
+      absolutePath,
+      {
+        ignore: config.ignore
+      }
+    )
+  );
+  return deduplicateIssues([
     ...projectIssues,
     ...dependencyIssues,
     ...securityIssues,
     ...secretIssues,
     ...environmentIssues
-  ];
-  const issues = deduplicateIssues(
-    rawIssues
+  ]);
+}
+async function scanCommand(projectPath = ".", options = {}) {
+  const absolutePath = path11.resolve(projectPath);
+  if (!fs12.existsSync(absolutePath) || !fs12.statSync(absolutePath).isDirectory()) {
+    const errorIssue = {
+      severity: "error",
+      category: "project",
+      title: "Project directory not found",
+      message: `The project directory does not exist: ${absolutePath}`,
+      suggestion: "Please verify that the target directory exists and is accessible."
+    };
+    if (options.json) {
+      console.log(
+        formatJsonResult([errorIssue], absolutePath)
+      );
+    } else {
+      console.error(
+        pc4.red(`Error: Project directory does not exist: ${absolutePath}`)
+      );
+      console.error(
+        pc4.dim("Please verify that the target directory exists and is accessible.")
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+  const config = await loadLumenConfig(
+    absolutePath
   );
+  let rawIssues = [];
+  let changedFileCount;
+  const isChangedMode = Boolean(options.changed || options.base);
+  if (isChangedMode) {
+    const ignorePatterns = mergeIgnorePatterns(
+      loadLumenIgnore(absolutePath),
+      config.ignore ?? []
+    );
+    let changedFiles;
+    try {
+      changedFiles = getChangedFiles(
+        absolutePath,
+        ignorePatterns,
+        options.base
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unable to read Git changes.";
+      if (options.json) {
+        const errorIssue = {
+          severity: "error",
+          category: "project",
+          title: "Git changes unavailable",
+          message: errorMessage,
+          suggestion: "Make sure Git is installed and the target directory is inside a Git repository."
+        };
+        console.log(
+          formatJsonResult([errorIssue], absolutePath)
+        );
+      } else {
+        console.error(pc4.red(errorMessage));
+      }
+      process.exitCode = 1;
+      return;
+    }
+    changedFileCount = changedFiles.length;
+    if (config.security?.enabled === false) {
+      rawIssues = [
+        {
+          severity: "info",
+          category: "security",
+          title: "Secret scanning is disabled",
+          message: "Enable security scanning in lumen.config.ts to scan changed files for secrets."
+        }
+      ];
+    } else if (changedFiles.length === 0) {
+      rawIssues = [
+        {
+          severity: "info",
+          category: "security",
+          title: "No changed files to scan",
+          message: "Git did not report any eligible changed files."
+        }
+      ];
+    } else {
+      rawIssues = await runAnalyzerSafely(
+        "Secret analyzer",
+        "security",
+        () => analyzeSecrets(
+          absolutePath,
+          {
+            ignore: config.ignore,
+            changedFiles
+          }
+        )
+      );
+    }
+  } else {
+    rawIssues = await collectIssues(absolutePath);
+  }
+  const issues = deduplicateIssues(rawIssues);
   if (options.json) {
     console.log(
       formatJsonResult(
@@ -1678,64 +2262,35 @@ async function scanCommand(projectPath = ".", options = {}) {
         absolutePath
       )
     );
-    if (shouldFail(
-      issues,
-      config.failOn
-    )) {
+    if (shouldFail(issues, config.failOn ?? "error")) {
       process.exitCode = 1;
     }
     return;
   }
   console.log();
-  console.log(
-    pc2.bold("Lumen")
-  );
-  console.log(
-    pc2.dim(
-      "Illuminate your code."
-    )
-  );
+  console.log(pc4.bold("Lumen"));
+  console.log(pc4.dim("Illuminate your code."));
   console.log();
-  console.log(
-    pc2.dim(
-      `Scanning: ${absolutePath}`
-    )
-  );
+  console.log(pc4.dim(`Scanning: ${absolutePath}`));
+  if (isChangedMode) {
+    const modeLabel = options.base ? `Mode: changed files compared against ${options.base} (secret scanning only)` : "Mode: changed files (secret scanning only)";
+    console.log(pc4.cyan(modeLabel));
+    console.log(
+      pc4.dim(
+        `Eligible changed files: ${changedFileCount ?? 0}`
+      )
+    );
+  }
   console.log();
-  const grouped = groupIssuesByCategory(
-    issues
-  );
-  printCategory(
-    "Project",
-    grouped.project
-  );
-  printCategory(
-    "Dependencies",
-    grouped.dependency
-  );
-  printCategory(
-    "Security",
-    grouped.security
-  );
-  printCategory(
-    "Environment",
-    grouped.environment
-  );
-  printCategory(
-    "Code",
-    grouped.code
-  );
-  printCategory(
-    "Configuration",
-    grouped.configuration
-  );
-  printSummary(
-    issues
-  );
-  if (shouldFail(
-    issues,
-    config.failOn
-  )) {
+  const grouped = groupIssuesByCategory(issues);
+  printCategory("Project", grouped.project);
+  printCategory("Dependencies", grouped.dependency);
+  printCategory("Security", grouped.security);
+  printCategory("Environment", grouped.environment);
+  printCategory("Code", grouped.code);
+  printCategory("Configuration", grouped.configuration);
+  printSummary(issues);
+  if (shouldFail(issues, config.failOn ?? "error")) {
     process.exitCode = 1;
   }
 }
@@ -1758,13 +2313,9 @@ function printCategory(title, issues) {
   if (issues.length === 0) {
     return;
   }
+  console.log(pc4.bold(title));
   console.log(
-    pc2.bold(title)
-  );
-  console.log(
-    pc2.dim(
-      "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-    )
+    pc4.dim("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
   );
   for (const issue of issues) {
     printIssue(issue);
@@ -1773,24 +2324,30 @@ function printCategory(title, issues) {
 
 // src/index.ts
 var program = new Command();
-program.name("lumen").description(
-  "Illuminate your code."
-).version("0.1.0");
-program.command("scan").description(
-  "Analyze your project"
-).argument(
-  "[path]",
-  "Project path",
-  "."
+program.name("lumen").description("Illuminate your code.").version("0.1.4", "-v, --version", "Output the current version");
+program.command("init").description("Create a Lumen configuration file").argument("[path]", "Project path", ".").action((projectPath) => {
+  initCommand(projectPath);
+});
+program.command("scan").description("Analyze your project").argument("[path]", "Project path", ".").option("--json", "Output scan results as JSON").option(
+  "--changed",
+  "Scan changed Git files for hardcoded secrets only"
 ).option(
-  "--json",
-  "Output scan results as JSON"
-).action(
-  async (path10, options) => {
-    await scanCommand(
-      path10,
-      options
+  "--base <ref>",
+  "Base Git branch or reference to compare against (e.g. origin/main)"
+).action(async (projectPath, options) => {
+  await scanCommand(
+    projectPath,
+    options
+  );
+});
+if (process.argv.length <= 2) {
+  program.outputHelp();
+} else {
+  program.parseAsync().catch((error) => {
+    console.error(
+      "Lumen CLI failed:",
+      error instanceof Error ? error.message : error
     );
-  }
-);
-program.parse();
+    process.exitCode = 1;
+  });
+}

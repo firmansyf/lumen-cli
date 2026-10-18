@@ -5,12 +5,17 @@ interface NpmRegistryResponse {
   };
 }
 
+const NPM_REGISTRY_TIMEOUT_MS = 5000;
+
 export async function getLatestVersion(
   packageName: string
 ): Promise<string | null> {
   try {
     const response = await fetch(
-      `https://registry.npmjs.org/${encodeURIComponent(packageName)}`
+      `https://registry.npmjs.org/${encodeURIComponent(packageName)}`,
+      {
+        signal: AbortSignal.timeout(NPM_REGISTRY_TIMEOUT_MS)
+      }
     );
 
     if (!response.ok) {

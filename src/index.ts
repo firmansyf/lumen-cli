@@ -14,16 +14,12 @@ const program = new Command();
 program
   .name("lumen")
   .description("Illuminate your code.")
-  .version("0.1.4");
+  .version("0.1.4", "-v, --version", "Output the current version");
 
 program
   .command("init")
   .description("Create a Lumen configuration file")
-  .argument(
-    "[path]",
-    "Project path",
-    "."
-  )
+  .argument("[path]", "Project path", ".")
   .action((projectPath: string) => {
     initCommand(projectPath);
   });
@@ -31,26 +27,35 @@ program
 program
   .command("scan")
   .description("Analyze your project")
-  .argument(
-    "[path]",
-    "Project path",
-    "."
+  .argument("[path]", "Project path", ".")
+  .option("--json", "Output scan results as JSON")
+  .option(
+    "--changed",
+    "Scan changed Git files for hardcoded secrets only"
   )
   .option(
-    "--json",
-    "Output scan results as JSON"
+    "--base <ref>",
+    "Base Git branch or reference to compare against (e.g. origin/main)"
   )
   .action(async (projectPath, options) => {
-    await scanCommand(projectPath, options);
+    await scanCommand(
+      projectPath,
+      options
+    );
   });
 
-program.parseAsync().catch((error: unknown) => {
-  console.error(
-    "Lumen CLI failed:",
-    error instanceof Error
-      ? error.message
-      : error
-  );
+if (process.argv.length <= 2) {
+  program.outputHelp();
+} else {
+  program.parseAsync().catch((error: unknown) => {
+    console.error(
+      "Lumen CLI failed:",
+      error instanceof Error
+        ? error.message
+        : error
+    );
 
-  process.exitCode = 1;
-});
+    process.exitCode = 1;
+  });
+}
+

@@ -24,6 +24,7 @@ export function analyzeProject(projectPath: string): Issue[] {
       category: "project",
       title: "package.json not found",
       message: "Lumen could not find a package.json file.",
+      file: "package.json",
       suggestion: "Run `npm init` or `pnpm init`."
     });
   }

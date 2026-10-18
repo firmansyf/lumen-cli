@@ -23,6 +23,22 @@ interface PackageJson {
   devDependencies?: Record<string, string>;
 }
 
+const OSV_CONCURRENCY = 5;
+
+async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const chunkResults = await Promise.all(chunk.map(fn));
+    results.push(...chunkResults);
+  }
+  return results;
+}
+
 export async function analyzeSecurity(
   projectPath: string
 ): Promise<Issue[]> {
@@ -35,9 +51,15 @@ export async function analyzeSecurity(
     return [];
   }
 
-  const packageJson = JSON.parse(
-    fs.readFileSync(packageJsonPath, "utf-8")
-  ) as PackageJson;
+  let packageJson: PackageJson;
+
+  try {
+    packageJson = JSON.parse(
+      fs.readFileSync(packageJsonPath, "utf-8")
+    ) as PackageJson;
+  } catch {
+    return [];
+  }
 
   const dependencies = {
     ...packageJson.dependencies,
@@ -46,9 +68,11 @@ export async function analyzeSecurity(
 
   const entries = Object.entries(dependencies);
 
-  const results = await Promise.all(
-    entries.map(
-      async ([packageName]) => {
+  const results = await mapConcurrent(
+    entries,
+    OSV_CONCURRENCY,
+    async ([packageName]) => {
+      try {
         const installedVersion =
           getInstalledVersion(
             projectPath,
@@ -77,7 +101,10 @@ export async function analyzeSecurity(
               getFixedVersion(vulnerability);
 
             const severity =
-              getSecuritySeverity(cvss);
+              getSecuritySeverity(
+                cvss,
+                vulnerability.database_specific?.severity
+              );
 
             const identifier =
               cve ?? vulnerability.id;
@@ -115,8 +142,10 @@ export async function analyzeSecurity(
             };
           }
         );
+      } catch {
+        return [];
       }
-    )
+    }
   );
 
   const issues = results.flat();

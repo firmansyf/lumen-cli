@@ -42,6 +42,14 @@ interface OsvResponse {
   vulns?: OsvVulnerability[];
 }
 
+const OSV_TIMEOUT_MS = 5000;
+const MAX_RETRIES = 1;
+const RETRY_DELAY_MS = 500;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function queryOsv(
   packageName: string,
   version: string
@@ -54,27 +62,49 @@ export async function queryOsv(
     version
   };
 
-  try {
-    const response = await fetch(
-      "https://api.osv.dev/v1/query",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(query)
-      }
-    );
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(
+        "https://api.osv.dev/v1/query",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(query),
+          signal: AbortSignal.timeout(OSV_TIMEOUT_MS)
+        }
+      );
 
-    if (!response.ok) {
+      // Handle rate limit (429) or transient server errors (503)
+      if (
+        (response.status === 429 || response.status === 503) &&
+        attempt < MAX_RETRIES
+      ) {
+        await wait(RETRY_DELAY_MS);
+        continue;
+      }
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data =
+        (await response.json()) as OsvResponse;
+
+      if (!data || typeof data !== "object" || !Array.isArray(data.vulns)) {
+        return [];
+      }
+
+      return data.vulns;
+    } catch {
+      if (attempt < MAX_RETRIES) {
+        await wait(RETRY_DELAY_MS);
+        continue;
+      }
       return [];
     }
-
-    const data =
-      (await response.json()) as OsvResponse;
-
-    return data.vulns ?? [];
-  } catch {
-    return [];
   }
+
+  return [];
 }

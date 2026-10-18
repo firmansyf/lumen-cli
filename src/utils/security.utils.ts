@@ -4,15 +4,20 @@ export function getCvssScore(
   vulnerability: OsvVulnerability
 ): number | undefined {
   const cvss = vulnerability.severity?.find(
-    (item) => item.type === "CVSS_V3"
+    (item) => item.type === "CVSS_V3" || item.type === "CVSS_V4"
   );
 
   if (!cvss?.score) {
     return undefined;
   }
 
+  const directScore = Number(cvss.score);
+  if (!Number.isNaN(directScore) && directScore >= 0 && directScore <= 10) {
+    return directScore;
+  }
+
   const match = cvss.score.match(
-    /CVSS:3\.\d\/.*?\/(\d+(?:\.\d+)?)$/
+    /CVSS:(?:3\.\d|4\.0)\/.*?\/(\d+(?:\.\d+)?)$/
   );
 
   if (!match) {
@@ -51,19 +56,33 @@ export function getFixedVersion(
 }
 
 export function getSecuritySeverity(
-  score?: number
+  score?: number,
+  databaseSeverity?: string
 ): "info" | "warning" | "error" {
-  if (score === undefined) {
-    return "warning";
+  if (score !== undefined) {
+    if (score >= 7) {
+      return "error";
+    }
+
+    if (score >= 4) {
+      return "warning";
+    }
+
+    return "info";
   }
 
-  if (score >= 7) {
-    return "error";
+  if (databaseSeverity) {
+    const normalized = databaseSeverity.toUpperCase();
+    if (normalized === "CRITICAL" || normalized === "HIGH") {
+      return "error";
+    }
+    if (normalized === "MODERATE" || normalized === "MEDIUM") {
+      return "warning";
+    }
+    if (normalized === "LOW") {
+      return "info";
+    }
   }
 
-  if (score >= 4) {
-    return "warning";
-  }
-
-  return "info";
+  return "warning";
 }

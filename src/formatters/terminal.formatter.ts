@@ -57,27 +57,27 @@ function printDependencyMetadata(
     updateType
   } = issue.metadata;
 
-  if (declaredVersion) {
+  if (updateType) {
+    console.log(
+      `  Type: ${getUpdateLabel(updateType)}`
+    );
+  }
+
+  if (!issue.message.includes("Declared:") && declaredVersion) {
     console.log(
       `  Declared: ${declaredVersion}`
     );
   }
 
-  if (installedVersion) {
+  if (!issue.message.includes("Installed:") && installedVersion) {
     console.log(
       `  Installed: ${installedVersion}`
     );
   }
 
-  if (latestVersion) {
+  if (!issue.message.includes("Latest:") && latestVersion) {
     console.log(
       `  Latest: ${latestVersion}`
-    );
-  }
-
-  if (updateType) {
-    console.log(
-      `  Type: ${getUpdateLabel(updateType)}`
     );
   }
 }
@@ -97,12 +97,6 @@ function printSecurityMetadata(
   if (metadata.secretType) {
     console.log(
       `  Type: ${metadata.secretType}`
-    );
-  }
-
-  if (metadata.line) {
-    console.log(
-      `  Line: ${metadata.line}`
     );
   }
 
@@ -153,14 +147,9 @@ function printEnvironmentMetadata(
     );
   }
 
-  if (issue.metadata.line) {
-    console.log(
-      `  Line: ${issue.metadata.line}`
-    );
-  }
-
   if (
-    issue.metadata.environmentFile
+    issue.metadata.environmentFile &&
+    issue.metadata.environmentFile !== issue.file
   ) {
     console.log(
       `  Environment file: ${issue.metadata.environmentFile}`
@@ -184,8 +173,12 @@ export function printIssue(
   );
 
   if (issue.file) {
+    const location = issue.metadata?.line
+      ? `${issue.file}:${issue.metadata.line}`
+      : issue.file;
+
     console.log(
-      `  File: ${issue.file}`
+      `  File: ${pc.cyan(location)}`
     );
   }
 
@@ -197,7 +190,7 @@ export function printIssue(
 
   if (issue.suggestion) {
     console.log(
-      `  Suggestion: ${issue.suggestion}`
+      `  ${pc.cyan("→")} ${pc.dim("Suggestion:")} ${issue.suggestion}`
     );
   }
 

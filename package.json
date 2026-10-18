@@ -3,11 +3,22 @@
   "version": "0.1.4",
   "description": "Illuminate your code. A developer project health and diagnostics CLI.",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "bin": {
-    "lumen": "dist/index.js"
+    "lumen": "dist/index.js",
+    "lumen-cli": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"
@@ -46,5 +57,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/firmansyf/lumen-cli.git"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/firmansyf/lumen-cli/issues"
+  },
+  "homepage": "https://github.com/firmansyf/lumen-cli#readme"
 }

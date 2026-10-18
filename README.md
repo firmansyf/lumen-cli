@@ -1,5 +1,24 @@
 # Lumen
 
+<p align="center">
+  <img src="./assets/yf-labs-logo.svg" alt="YF Labs" width="380" />
+</p>
+
+<p align="center">
+  <img src="./assets/icon.svg" alt="YF Labs" width="20" height="20" style="vertical-align: -3px;" />
+  <b>Lumen CLI is under active development by <a href="https://github.com/firmansyf">YF Labs</a></b><br>
+  <sub>Illuminate your code. Developer project health, diagnostics, and security analysis.</sub>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Under%20Development-blue" alt="Status: Under Development" />
+  <img src="https://img.shields.io/badge/Developed%20by-YF%20Labs-indigo" alt="Developed by YF Labs" />
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D20-brightgreen" alt="Node.js >= 20" />
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" />
+</p>
+
+---
+
 > Illuminate your code.
 
 Lumen is a developer project health and diagnostics CLI that helps you find potential problems before shipping.
@@ -290,51 +309,166 @@ Default:
 failOn: "error"
 ```
 
-## GitHub Actions
+## GitHub Actions & CI/CD
 
-Run Lumen in GitHub Actions:
+Lumen is designed to integrate into CI/CD pipelines to catch issues before shipping code.
+
+### Sample Workflow
+
+Create `.github/workflows/lumen.yml` in your repository:
 
 ```yaml
-- name: Run Lumen
-  run: npx lumen-cli scan
+name: Lumen CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    name: Build, Test & Scan
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20, 22]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run test suite
+        run: pnpm test
+
+      - name: Build project
+        run: pnpm build
+
+      # On Pull Requests: scan only files changed compared to base branch
+      - name: Scan PR changed files for secrets
+        if: github.event_name == 'pull_request'
+        run: node dist/index.js scan --changed --base origin/${{ github.base_ref }}
+
+      # Run full project health scan
+      - name: Run full Lumen scan
+        run: node dist/index.js scan
 ```
 
-For machine-readable results:
+### Scanning in External Projects (via npx / pnpm dlx)
+
+For projects using Lumen without adding it as a local dependency:
 
 ```yaml
-- name: Run Lumen
+- name: Run Lumen Scan
+  run: npx lumen-cli scan
+
+# Machine-readable output for automations
+- name: Run Lumen Scan (JSON)
   run: npx lumen-cli scan --json
 ```
 
+### Pull Request Changed Files Comparison
+
+On pull requests, `git status` sees a clean working tree because the PR commits are already committed. Use `--base` to compare against the target branch:
+
+```bash
+lumen scan --changed --base origin/main
+```
+
+> [!NOTE]
+> Ensure your checkout action uses `fetch-depth: 0` so Git can access the base branch history for three-dot diff comparison (`origin/main...HEAD`).
+
+### Security & Privacy in CI/CD
+
+- **Zero Secret Exposure:** Lumen's secret scanner detects potential hardcoded credentials using pattern matching, but **never prints, logs, or exports the actual secret values** to the terminal, logs, or JSON outputs.
+- **Environment Privacy:** Lumen scans `.env` variable names to ensure they are documented in `.env.example`, but **never reads, logs, or transmits the secret values** inside `.env`.
+- **Least Privilege:** The workflow requires only `contents: read` permissions.
+
+### Troubleshooting CI
+
+#### 1. `Cannot compare against base 'origin/main'`
+- **Cause:** `actions/checkout` defaults to shallow clone (`fetch-depth: 1`), meaning `origin/main` is not present in local refs.
+- **Fix:** Set `fetch-depth: 0` on `actions/checkout@v4`.
+
+#### 2. Workflow fails on warnings
+- **Cause:** The default `failOn` is `"error"`, but your `lumen.config.ts` might be configured to `failOn: "warning"`.
+- **Fix:** Review reported warnings or configure `failOn: "error"` in `lumen.config.ts`.
+
+#### 3. Network Timeouts or Rate Limits
+- **Behavior:** Lumen includes built-in timeouts (5000ms) and automatic retry with exponential backoff for OSV and npm registry rate limits (HTTP 429 / 503). If network access is completely disabled in a sandboxed CI runner, network checks will fail gracefully without crashing other analyzers.
+
 ## CLI Reference
 
-### Scan a project
+### Scan current project
 
 ```bash
 npx lumen-cli scan
 ```
 
+### Scan specific directory
+
 ```bash
-npx lumen-cli scan ./my-project
+npx lumen-cli scan ./path/to/project
 ```
 
-### JSON output
+### Scan changed Git files only (secrets check)
+
+```bash
+# Scan uncommitted / untracked working tree changes
+npx lumen-cli scan --changed
+
+# Scan changes compared to a base branch (e.g. in PRs)
+npx lumen-cli scan --changed --base origin/main
+```
+
+### JSON output for CI / tooling
 
 ```bash
 npx lumen-cli scan --json
 ```
 
-### Show version
+### Initialize configuration
+
+```bash
+npx lumen-cli init
+```
+
+### Show version & help
 
 ```bash
 npx lumen-cli --version
-```
-
-### Show help
-
-```bash
+npx lumen-cli -v
 npx lumen-cli --help
 ```
+
+## <img src="./assets/icon.svg" alt="YF Labs" width="22" height="22" style="vertical-align: -3px;" /> About YF Labs
+
+Lumen CLI is engineered under **YF Labs** (Research & Developer Tooling) by Yusuf Firmansyah, focused on crafting modern, high-performance developer tools with exceptional developer experience.
 
 ## License
 

@@ -19,6 +19,34 @@ interface PackageJson {
   devDependencies?: Record<string, string>;
 }
 
+function isNonSemverRange(range: string): boolean {
+  return (
+    range.startsWith("workspace:") ||
+    range.startsWith("file:") ||
+    range.startsWith("link:") ||
+    range.startsWith("git") ||
+    range.startsWith("http:") ||
+    range.startsWith("https:") ||
+    range.startsWith("npm:")
+  );
+}
+
+const DEPENDENCY_CONCURRENCY = 8;
+
+async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const chunk = items.slice(i, i + limit);
+    const chunkResults = await Promise.all(chunk.map(fn));
+    results.push(...chunkResults);
+  }
+  return results;
+}
+
 export async function analyzeDependencies(
   projectPath: string
 ): Promise<Issue[]> {
@@ -87,9 +115,10 @@ export async function analyzeDependencies(
     file: "package.json"
   });
 
-  const results = await Promise.all(
-    dependencyEntries.map(
-      async ([packageName, declaredVersion]) => {
+  const results = await mapConcurrent(
+    dependencyEntries,
+    DEPENDENCY_CONCURRENCY,
+    async ([packageName, declaredVersion]) => {
         const installedVersion =
           getInstalledVersion(
             projectPath,
@@ -169,6 +198,7 @@ export async function analyzeDependencies(
         }
 
         const installedMatchesDeclared =
+          isNonSemverRange(declaredVersion) ||
           isVersionInRange(
             parsedInstalledVersion,
             declaredVersion
@@ -194,6 +224,7 @@ export async function analyzeDependencies(
         }
 
         const isLatestInDeclaredRange =
+          isNonSemverRange(declaredVersion) ||
           isVersionInRange(
             parsedLatestVersion,
             declaredVersion
@@ -292,8 +323,7 @@ export async function analyzeDependencies(
           }
         };
       }
-    )
-  );
+    );
 
   issues.push(...results);
 

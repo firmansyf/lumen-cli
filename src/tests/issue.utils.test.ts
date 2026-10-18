@@ -25,6 +25,8 @@ describe(
           category: "dependency",
           title:
             "typescript has an update",
+          message:
+            "typescript has an update",
           file: "package.json"
         };
 
@@ -44,6 +46,7 @@ describe(
           severity: "error",
           category: "security",
           title: "API Key detected",
+          message: "Potential API Key found",
           file: "src/a.ts",
           metadata: {
             line: 10,
@@ -55,6 +58,7 @@ describe(
           severity: "error",
           category: "security",
           title: "API Key detected",
+          message: "Potential API Key found",
           file: "src/b.ts",
           metadata: {
             line: 10,
@@ -77,6 +81,8 @@ describe(
           severity: "warning",
           category: "environment",
           title:
+            "API_KEY is missing",
+          message:
             "API_KEY is missing",
           file: "src/config.ts",
           metadata: {
@@ -111,6 +117,8 @@ describe(
           category: "environment",
           title:
             "API_KEY is missing",
+          message:
+            "API_KEY is missing",
           file: "src/config.ts",
           metadata: {
             line: 10,
@@ -124,6 +132,8 @@ describe(
           severity: "warning",
           category: "environment",
           title:
+            "DATABASE_URL is missing",
+          message:
             "DATABASE_URL is missing",
           file: "src/config.ts",
           metadata: {
@@ -155,28 +165,36 @@ describe(
             severity: "info",
             category: "project",
             title:
-              "Project issue"
+              "Project issue",
+            message:
+              "Project message"
           },
 
           {
             severity: "warning",
             category: "dependency",
             title:
-              "Dependency issue"
+              "Dependency issue",
+            message:
+              "Dependency message"
           },
 
           {
             severity: "error",
             category: "security",
             title:
-              "Security issue"
+              "Security issue",
+            message:
+              "Security message"
           },
 
           {
             severity: "warning",
             category: "environment",
             title:
-              "Environment issue"
+              "Environment issue",
+            message:
+              "Environment message"
           }
         ];
 

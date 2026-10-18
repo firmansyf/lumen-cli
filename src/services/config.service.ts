@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import pc from "picocolors";
 
 import type {
   LumenConfig,
@@ -122,12 +123,25 @@ function normalizeConfig(
 
   const raw = config as Record<string, unknown>;
 
-  const ignore = Array.isArray(raw.ignore)
-    ? raw.ignore.filter(
-        (value): value is string =>
-          typeof value === "string"
-      )
-    : [...DEFAULT_CONFIG.ignore];
+  let ignore: string[];
+  if (Array.isArray(raw.ignore)) {
+    const hasNonString = raw.ignore.some(
+      (v) => typeof v !== "string"
+    );
+    if (hasNonString) {
+      console.warn(
+        pc.yellow(
+          "Warning: 'ignore' contains non-string items that were filtered out."
+        )
+      );
+    }
+    ignore = raw.ignore.filter(
+      (value): value is string =>
+        typeof value === "string"
+    );
+  } else {
+    ignore = [...DEFAULT_CONFIG.ignore];
+  }
 
   const failOn = normalizeFailOn(raw.failOn);
 
@@ -161,6 +175,14 @@ function normalizeFailOn(
     value === "none"
   ) {
     return value;
+  }
+
+  if (value !== undefined) {
+    console.warn(
+      pc.yellow(
+        `Warning: Invalid failOn '${String(value)}'. Expected 'error', 'warning', or 'none'. Defaulting to 'error'.`
+      )
+    );
   }
 
   return DEFAULT_CONFIG.failOn;

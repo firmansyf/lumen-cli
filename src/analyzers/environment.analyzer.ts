@@ -8,6 +8,12 @@ import {
   readEnvironmentFile
 } from "../utils/environment.utils.js";
 
+import {
+  loadLumenIgnore,
+  mergeIgnorePatterns,
+  shouldIgnorePath
+} from "../utils/ignore.utils.js";
+
 const IGNORED_DIRECTORIES =
   new Set([
     "node_modules",
@@ -67,11 +73,17 @@ function shouldIgnore(
 }
 
 function getSourceFiles(
-  directory: string
+  projectPath: string,
+  directory: string,
+  ignorePatterns: string[] = []
 ): string[] {
   const files: string[] = [];
 
-  if (shouldIgnore(directory)) {
+  if (
+    shouldIgnore(directory) ||
+    (directory !== projectPath &&
+      shouldIgnorePath(projectPath, directory, ignorePatterns))
+  ) {
     return files;
   }
 
@@ -95,14 +107,19 @@ function getSourceFiles(
         entry.name
       );
 
-    if (shouldIgnore(fullPath)) {
+    if (
+      shouldIgnore(fullPath) ||
+      shouldIgnorePath(projectPath, fullPath, ignorePatterns)
+    ) {
       continue;
     }
 
     if (entry.isDirectory()) {
       files.push(
         ...getSourceFiles(
-          fullPath
+          projectPath,
+          fullPath,
+          ignorePatterns
         )
       );
 
@@ -141,7 +158,8 @@ function getLineNumber(
 }
 
 function getReferencedVariables(
-  projectPath: string
+  projectPath: string,
+  ignorePatterns: string[] = []
 ): Map<string, {
   file: string;
   line: number;
@@ -157,7 +175,9 @@ function getReferencedVariables(
 
   const files =
     getSourceFiles(
-      projectPath
+      projectPath,
+      projectPath,
+      ignorePatterns
     );
 
   for (const filePath of files) {
@@ -337,10 +357,21 @@ function isGitignored(
   return false;
 }
 
+export interface EnvironmentAnalyzerOptions {
+  ignore?: string[];
+}
+
 export function analyzeEnvironment(
-  projectPath: string
+  projectPath: string,
+  options: EnvironmentAnalyzerOptions = {}
 ): Issue[] {
   const issues: Issue[] = [];
+
+  const fileIgnore = loadLumenIgnore(projectPath);
+  const ignorePatterns = mergeIgnorePatterns(
+    fileIgnore,
+    options.ignore ?? []
+  );
 
   const envPath =
     path.join(
@@ -516,7 +547,8 @@ export function analyzeEnvironment(
 
   const references =
     getReferencedVariables(
-      projectPath
+      projectPath,
+      ignorePatterns
     );
 
   /*

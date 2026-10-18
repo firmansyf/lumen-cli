@@ -1,9 +1,14 @@
 import type { Issue } from "../types/issue.js";
+import packageJson from "../../package.json" with {
+  type: "json"
+};
 
 interface LumenJsonResult {
   tool: string;
   version: string;
   scannedPath: string;
+  timestamp: string;
+  success: boolean;
 
   summary: {
     total: number;
@@ -37,9 +42,13 @@ export function formatJsonResult(
   const result: LumenJsonResult = {
     tool: "lumen",
 
-    version: "0.1.0",
+    version: packageJson.version,
 
     scannedPath,
+
+    timestamp: new Date().toISOString(),
+
+    success: errors === 0,
 
     summary: {
       total: issues.length,
