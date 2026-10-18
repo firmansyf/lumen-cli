@@ -1,6 +1,6 @@
 {
   "name": "lumen-cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Illuminate your code. A developer project health and diagnostics CLI.",
   "type": "module",
   "main": "dist/index.js",
