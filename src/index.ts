@@ -6,6 +6,10 @@ import {
 } from "./commands/init.command.js";
 
 import {
+  VERSION
+} from "./version.js";
+
+import {
   scanCommand
 } from "./commands/scan.command.js";
 
@@ -14,7 +18,7 @@ const program = new Command();
 program
   .name("lumen")
   .description("Illuminate your code.")
-  .version("0.1.4", "-v, --version", "Output the current version");
+  .version(VERSION, "-v, --version", "Output the current version");
 
 program
   .command("init")

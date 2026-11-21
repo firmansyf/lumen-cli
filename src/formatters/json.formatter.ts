@@ -1,7 +1,5 @@
 import type { Issue } from "../types/issue.js";
-import packageJson from "../../package.json" with {
-  type: "json"
-};
+import { VERSION } from "../version.js";
 
 interface LumenJsonResult {
   tool: string;
@@ -42,7 +40,7 @@ export function formatJsonResult(
   const result: LumenJsonResult = {
     tool: "lumen",
 
-    version: packageJson.version,
+    version: VERSION,
 
     scannedPath,
 
