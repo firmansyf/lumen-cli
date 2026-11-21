@@ -5,7 +5,16 @@ All notable changes to Lumen CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.6] - 2026-11-21
+
+### Fixed
+- `lumen --version` and `lumen -v` printed `0.1.4` instead of the installed version. The version now comes from `package.json` (shared with the `--json` output), with a regression test.
+
+### Changed
+- npm `homepage` now points to the usage guide: https://yflabstudio.com/docs/products/lumen-cli
+- `prepublishOnly` runs the test suite and a fresh build before publishing.
+
+## [0.1.5] - 2026-10-18
 
 ### Added
 - **Git-Aware Scanning (`--changed` and `--base <ref>`)**:

@@ -89,6 +89,77 @@ function initCommand(projectPath = ".") {
   }
 }
 
+// package.json
+var package_default = {
+  name: "lumen-cli",
+  version: "0.1.6",
+  description: "Illuminate your code. A developer project health and diagnostics CLI.",
+  type: "module",
+  main: "dist/index.js",
+  types: "dist/index.d.ts",
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      default: "./dist/index.js"
+    }
+  },
+  bin: {
+    lumen: "dist/index.js",
+    "lumen-cli": "dist/index.js"
+  },
+  files: [
+    "dist",
+    "assets",
+    "CHANGELOG.md"
+  ],
+  engines: {
+    node: ">=20"
+  },
+  scripts: {
+    dev: "tsx src/index.ts",
+    build: "tsup",
+    start: "node dist/index.js",
+    test: "vitest run",
+    "test:watch": "vitest",
+    prepublishOnly: "pnpm test && pnpm build"
+  },
+  keywords: [
+    "cli",
+    "developer-tools",
+    "code-quality",
+    "security",
+    "dependency",
+    "diagnostics",
+    "developer-experience"
+  ],
+  author: "Yusuf Firmansyah",
+  license: "MIT",
+  dependencies: {
+    commander: "^14.0.0",
+    picocolors: "^1.1.1",
+    semver: "^7.7.0"
+  },
+  devDependencies: {
+    "@types/node": "^24.0.0",
+    "@types/semver": "^7.7.0",
+    tsup: "^8.0.0",
+    tsx: "^4.0.0",
+    typescript: "^5.0.0",
+    vitest: "^3.0.0"
+  },
+  repository: {
+    type: "git",
+    url: "git+https://github.com/firmansyf/lumen-cli.git"
+  },
+  bugs: {
+    url: "https://github.com/firmansyf/lumen-cli/issues"
+  },
+  homepage: "https://yflabstudio.com/docs/products/lumen-cli"
+};
+
+// src/version.ts
+var VERSION = package_default.version;
+
 // src/commands/scan.command.ts
 import fs12 from "fs";
 import path11 from "path";
@@ -1617,73 +1688,6 @@ function printSummary(issues) {
   console.log();
 }
 
-// package.json
-var package_default = {
-  name: "lumen-cli",
-  version: "0.1.5",
-  description: "Illuminate your code. A developer project health and diagnostics CLI.",
-  type: "module",
-  main: "dist/index.js",
-  types: "dist/index.d.ts",
-  exports: {
-    ".": {
-      types: "./dist/index.d.ts",
-      default: "./dist/index.js"
-    }
-  },
-  bin: {
-    lumen: "dist/index.js",
-    "lumen-cli": "dist/index.js"
-  },
-  files: [
-    "dist",
-    "assets",
-    "CHANGELOG.md"
-  ],
-  engines: {
-    node: ">=20"
-  },
-  scripts: {
-    dev: "tsx src/index.ts",
-    build: "tsup",
-    start: "node dist/index.js",
-    test: "vitest run",
-    "test:watch": "vitest"
-  },
-  keywords: [
-    "cli",
-    "developer-tools",
-    "code-quality",
-    "security",
-    "dependency",
-    "diagnostics",
-    "developer-experience"
-  ],
-  author: "Yusuf Firmansyah",
-  license: "MIT",
-  dependencies: {
-    commander: "^14.0.0",
-    picocolors: "^1.1.1",
-    semver: "^7.7.0"
-  },
-  devDependencies: {
-    "@types/node": "^24.0.0",
-    "@types/semver": "^7.7.0",
-    tsup: "^8.0.0",
-    tsx: "^4.0.0",
-    typescript: "^5.0.0",
-    vitest: "^3.0.0"
-  },
-  repository: {
-    type: "git",
-    url: "git+https://github.com/firmansyf/lumen-cli.git"
-  },
-  bugs: {
-    url: "https://github.com/firmansyf/lumen-cli/issues"
-  },
-  homepage: "https://github.com/firmansyf/lumen-cli#readme"
-};
-
 // src/formatters/json.formatter.ts
 function formatJsonResult(issues, scannedPath) {
   const errors = issues.filter(
@@ -1697,7 +1701,7 @@ function formatJsonResult(issues, scannedPath) {
   ).length;
   const result = {
     tool: "lumen",
-    version: package_default.version,
+    version: VERSION,
     scannedPath,
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
     success: errors === 0,
@@ -2324,7 +2328,7 @@ function printCategory(title, issues) {
 
 // src/index.ts
 var program = new Command();
-program.name("lumen").description("Illuminate your code.").version("0.1.4", "-v, --version", "Output the current version");
+program.name("lumen").description("Illuminate your code.").version(VERSION, "-v, --version", "Output the current version");
 program.command("init").description("Create a Lumen configuration file").argument("[path]", "Project path", ".").action((projectPath) => {
   initCommand(projectPath);
 });

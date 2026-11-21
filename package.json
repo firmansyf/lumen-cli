@@ -1,6 +1,6 @@
 {
   "name": "lumen-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Illuminate your code. A developer project health and diagnostics CLI.",
   "type": "module",
   "main": "dist/index.js",
@@ -28,7 +28,8 @@
     "build": "tsup",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm test && pnpm build"
   },
   "keywords": [
     "cli",
@@ -61,5 +62,5 @@
   "bugs": {
     "url": "https://github.com/firmansyf/lumen-cli/issues"
   },
-  "homepage": "https://github.com/firmansyf/lumen-cli#readme"
+  "homepage": "https://yflabstudio.com/docs/products/lumen-cli"
 }

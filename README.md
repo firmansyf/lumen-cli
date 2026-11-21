@@ -21,6 +21,8 @@
 
 > Illuminate your code.
 
+📖 **Usage guide:** [yflabstudio.com/docs/products/lumen-cli](https://yflabstudio.com/docs/products/lumen-cli)
+
 Lumen is a developer project health and diagnostics CLI that helps you find potential problems before shipping.
 
 It checks your project for:
